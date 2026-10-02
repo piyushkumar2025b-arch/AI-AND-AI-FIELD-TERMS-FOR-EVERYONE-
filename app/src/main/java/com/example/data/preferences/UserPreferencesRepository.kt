@@ -29,7 +29,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     val openRouterModelFlow: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_OPENROUTER_MODEL] ?: "google/gemini-2.5-flash"
+        prefs[KEY_OPENROUTER_MODEL] ?: "openrouter/free"
     }
 
     val isDbInitializedFlow: Flow<Boolean> = context.dataStore.data.map { prefs ->

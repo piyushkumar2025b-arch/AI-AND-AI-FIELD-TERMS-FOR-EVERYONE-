@@ -53,6 +53,15 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _showAddWordDialog = MutableStateFlow(false)
     val showAddWordDialog: StateFlow<Boolean> = _showAddWordDialog.asStateFlow()
 
+    private val _showAiAddDialog = MutableStateFlow(false)
+    val showAiAddDialog: StateFlow<Boolean> = _showAiAddDialog.asStateFlow()
+
+    private val _isAiGeneratingWord = MutableStateFlow(false)
+    val isAiGeneratingWord: StateFlow<Boolean> = _isAiGeneratingWord.asStateFlow()
+
+    private val _aiWordError = MutableStateFlow<String?>(null)
+    val aiWordError: StateFlow<String?> = _aiWordError.asStateFlow()
+
     private val _showSettingsDialog = MutableStateFlow(false)
     val showSettingsDialog: StateFlow<Boolean> = _showSettingsDialog.asStateFlow()
 
@@ -71,7 +80,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     val openRouterModel: StateFlow<String> = prefsRepo.openRouterModelFlow.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
-        "google/gemini-2.5-flash"
+        "openrouter/free"
     )
 
     // Master stream of all words from Room database
@@ -222,6 +231,102 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     fun closeAddWordDialog() {
         _showAddWordDialog.value = false
+    }
+
+    fun openAiAddDialog() {
+        _aiWordError.value = null
+        _showAiAddDialog.value = true
+    }
+
+    fun closeAiAddDialog() {
+        _showAiAddDialog.value = false
+        _aiWordError.value = null
+    }
+
+    fun clearAiWordError() {
+        _aiWordError.value = null
+    }
+
+    fun generateAndAddWordWithAi(
+        term: String,
+        onSuccess: ((WordEntity) -> Unit)? = null
+    ) {
+        val trimmed = term.trim()
+        if (trimmed.isBlank()) {
+            _aiWordError.value = "Please enter a word or phrase to add."
+            return
+        }
+
+        val key = openRouterApiKey.value
+        if (key.isBlank()) {
+            _aiWordError.value = "OpenRouter API Key not set. Tap Settings to enter your free key from openrouter.ai/keys."
+            _showSettingsDialog.value = true
+            return
+        }
+
+        viewModelScope.launch {
+            _isAiGeneratingWord.value = true
+            _aiWordError.value = null
+
+            val result = openRouterService.generateWordDefinition(
+                apiKey = key,
+                model = openRouterModel.value,
+                term = trimmed
+            )
+
+            result.fold(
+                onSuccess = { generatedEntity ->
+                    val insertedId = wordDao.insertWord(generatedEntity)
+                    val fullWord = generatedEntity.copy(id = insertedId)
+                    _selectedWord.value = fullWord
+                    _isAiGeneratingWord.value = false
+                    _showAiAddDialog.value = false
+                    _showAddWordDialog.value = false
+                    onSuccess?.invoke(fullWord)
+                },
+                onFailure = { error ->
+                    _aiWordError.value = error.message ?: "Failed to generate word with OpenRouter free model."
+                    _isAiGeneratingWord.value = false
+                }
+            )
+        }
+    }
+
+    fun generateWordForForm(
+        term: String,
+        onGenerated: (WordEntity) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val trimmed = term.trim()
+        if (trimmed.isBlank()) {
+            onError("Please enter a term first.")
+            return
+        }
+
+        val key = openRouterApiKey.value
+        if (key.isBlank()) {
+            _showSettingsDialog.value = true
+            onError("Please enter your OpenRouter API key in Settings first.")
+            return
+        }
+
+        viewModelScope.launch {
+            _isAiGeneratingWord.value = true
+            val result = openRouterService.generateWordDefinition(
+                apiKey = key,
+                model = openRouterModel.value,
+                term = trimmed
+            )
+            _isAiGeneratingWord.value = false
+            result.fold(
+                onSuccess = { entity ->
+                    onGenerated(entity)
+                },
+                onFailure = { error ->
+                    onError(error.message ?: "Error generating word with free model.")
+                }
+            )
+        }
     }
 
     fun openSettingsDialog() {

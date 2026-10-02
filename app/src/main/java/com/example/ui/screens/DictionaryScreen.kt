@@ -100,6 +100,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.WordEntity
+import com.example.data.network.OpenRouterService
 import com.example.ui.theme.AiAccent
 import com.example.ui.theme.BookmarkGold
 import com.example.ui.viewmodel.DictionaryViewModel
@@ -127,6 +128,9 @@ fun DictionaryScreen(
     val openRouterModel by viewModel.openRouterModel.collectAsState()
 
     val showAddDialog by viewModel.showAddWordDialog.collectAsState()
+    val showAiAddDialog by viewModel.showAiAddDialog.collectAsState()
+    val isAiGeneratingWord by viewModel.isAiGeneratingWord.collectAsState()
+    val aiWordError by viewModel.aiWordError.collectAsState()
     val showSettingsDialog by viewModel.showSettingsDialog.collectAsState()
 
     val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -212,7 +216,22 @@ fun DictionaryScreen(
                                 )
                             }
 
-                            // Add Word Button
+                            // AI Add Word Button (OpenRouter Free Model)
+                            IconButton(
+                                onClick = { viewModel.openAiAddDialog() },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("ai_add_word_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Add Word with AI",
+                                    tint = AiAccent,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+
+                            // Add Word Button (Manual form)
                             IconButton(
                                 onClick = { viewModel.openAddWordDialog() },
                                 modifier = Modifier
@@ -470,7 +489,8 @@ fun DictionaryScreen(
                         words = words,
                         onWordClick = { viewModel.selectWord(it) },
                         onBookmarkToggle = { viewModel.toggleBookmark(it) },
-                        onAddWordClick = { viewModel.openAddWordDialog() }
+                        onAddWordClick = { viewModel.openAddWordDialog() },
+                        onAiAddClick = { viewModel.openAiAddDialog() }
                     )
                 } else {
                     // Comprehensive Word Meaning View
@@ -499,10 +519,31 @@ fun DictionaryScreen(
         }
     }
 
-    // Add Word Dialog
+    // AI Instant Add Word Dialog (OpenRouter Free Model)
+    if (showAiAddDialog) {
+        AiAddWordDialog(
+            isGenerating = isAiGeneratingWord,
+            errorMessage = aiWordError,
+            currentModel = openRouterModel,
+            apiKey = openRouterKey,
+            onDismiss = { viewModel.closeAiAddDialog() },
+            onGenerateAndAdd = { term ->
+                viewModel.generateAndAddWordWithAi(term)
+            },
+            onOpenSettings = {
+                viewModel.closeAiAddDialog()
+                viewModel.openSettingsDialog()
+            }
+        )
+    }
+
+    // Add Word Dialog (Manual + AI Auto-Fill)
     if (showAddDialog) {
         AddWordDialog(
             onDismiss = { viewModel.closeAddWordDialog() },
+            onAutoFillWithAi = { term, onGenerated, onError ->
+                viewModel.generateWordForForm(term, onGenerated, onError)
+            },
             onSave = { term, category, meaning, points, uses, examples, link ->
                 viewModel.addCustomWord(term, category, meaning, points, uses, examples, link)
             }
@@ -551,7 +592,8 @@ private fun WordListView(
     words: List<WordEntity>,
     onWordClick: (WordEntity) -> Unit,
     onBookmarkToggle: (WordEntity) -> Unit,
-    onAddWordClick: () -> Unit
+    onAddWordClick: () -> Unit,
+    onAiAddClick: () -> Unit = {}
 ) {
     if (words.isEmpty()) {
         Box(
@@ -560,32 +602,48 @@ private fun WordListView(
                 .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.size(48.dp)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "No matching words found",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                // Borderless button to add custom word
-                Button(
-                    onClick = onAddWordClick,
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "Add Custom Word", style = MaterialTheme.typography.labelSmall)
+                    // Generate & Add with AI (Free Model)
+                    Button(
+                        onClick = onAiAddClick,
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Add with AI (Free Model)", style = MaterialTheme.typography.labelSmall)
+                    }
+
+                    // Add manually
+                    FilledTonalButton(
+                        onClick = onAddWordClick,
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Add Manually", style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
@@ -1102,10 +1160,11 @@ private fun MeaningSection(
     }
 }
 
-// Add Custom Word Dialog
+// Add Custom Word Dialog (with AI auto-fill capability)
 @Composable
 private fun AddWordDialog(
     onDismiss: () -> Unit,
+    onAutoFillWithAi: ((term: String, onGenerated: (WordEntity) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
     onSave: (term: String, category: String, meaning: String, points: String, uses: String, examples: String, link: String) -> Unit
 ) {
     var term by remember { mutableStateOf("") }
@@ -1115,6 +1174,9 @@ private fun AddWordDialog(
     var uses by remember { mutableStateOf("") }
     var examples by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
+
+    var isAutofilling by remember { mutableStateOf(false) }
+    var autofillError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1132,18 +1194,97 @@ private fun AddWordDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Added words are automatically sorted in alphabetical order and stored offline.",
+                    text = "Words are arranged in alphabetical order and stored offline. Type manually or use AI auto-fill.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 TextField(
                     value = term,
-                    onValueChange = { term = it },
+                    onValueChange = {
+                        term = it
+                        autofillError = null
+                    },
                     label = { Text("Word / Term *") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("add_word_term_input")
                 )
+
+                // AI Auto-Fill helper button
+                if (onAutoFillWithAi != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = AiAccent.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .clickable(enabled = term.isNotBlank() && !isAutofilling) {
+                                    isAutofilling = true
+                                    autofillError = null
+                                    onAutoFillWithAi(
+                                        term,
+                                        { generated ->
+                                            isAutofilling = false
+                                            if (category.isBlank()) category = generated.category
+                                            meaning = generated.humanMeaning
+                                            points = generated.keyPoints
+                                            uses = generated.practicalUses
+                                            examples = generated.examples
+                                            link = generated.referenceUrl
+                                        },
+                                        { error ->
+                                            isAutofilling = false
+                                            autofillError = error
+                                        }
+                                    )
+                                }
+                                .testTag("autofill_with_ai_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isAutofilling) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = AiAccent
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Generating...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = AiAccent
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = AiAccent,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "Auto-Fill with AI (Free Model)",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = AiAccent
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (autofillError != null) {
+                        Text(
+                            text = autofillError!!,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
 
                 TextField(
                     value = category,
@@ -1216,7 +1357,194 @@ private fun AddWordDialog(
     )
 }
 
-// OpenRouter AI Configuration Dialog
+// AI Instant Add Word Dialog (OpenRouter Free Model)
+@Composable
+private fun AiAddWordDialog(
+    isGenerating: Boolean,
+    errorMessage: String?,
+    currentModel: String,
+    apiKey: String,
+    onDismiss: () -> Unit,
+    onGenerateAndAdd: (term: String) -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    var termInput by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+
+    AlertDialog(
+        onDismissRequest = { if (!isGenerating) onDismiss() },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = AiAccent,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Add Word with AI",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Enter any term or concept. The free OpenRouter AI model will research, format, and add it with full human meaning, key points, uses, examples, and Wikipedia link in the standard dictionary format.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Model Indicator badge
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = AiAccent.copy(alpha = 0.12f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Model: $currentModel (Free)",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                            color = AiAccent
+                        )
+                    }
+                }
+
+                // Word / Term input field
+                TextField(
+                    value = termInput,
+                    onValueChange = { termInput = it },
+                    label = { Text("Word / Term *") },
+                    placeholder = { Text("e.g. Speculative Decoding, LoRA, WireGuard") },
+                    singleLine = true,
+                    enabled = !isGenerating,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            if (termInput.isNotBlank() && !isGenerating) {
+                                onGenerateAndAdd(termInput)
+                            }
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("ai_add_word_input")
+                )
+
+                // Quick suggestions chips
+                Text(
+                    text = "Quick suggestions:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val suggestions = listOf("Speculative Decoding", "LoRA", "KV Cache", "BGP", "WireGuard", "Diffusion Models", "Direct Preference Optimization")
+                    for (s in suggestions) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.clickable(enabled = !isGenerating) {
+                                termInput = s
+                            }
+                        ) {
+                            Text(
+                                text = s,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isGenerating) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = AiAccent
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Generating structured dictionary entry with OpenRouter free model...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            if (apiKey.isBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                TextButton(
+                                    onClick = onOpenSettings,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Open Settings to enter free API key", style = MaterialTheme.typography.labelSmall, color = AiAccent)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (termInput.isNotBlank() && !isGenerating) {
+                        onGenerateAndAdd(termInput)
+                    }
+                },
+                enabled = termInput.isNotBlank() && !isGenerating,
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
+                modifier = Modifier.testTag("submit_ai_add_word_button")
+            ) {
+                if (isGenerating) {
+                    Text("Generating...")
+                } else {
+                    Text("Generate & Add")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isGenerating
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// OpenRouter AI Configuration Dialog (Configured with free models)
 @Composable
 private fun OpenRouterSettingsDialog(
     currentApiKey: String,
@@ -1226,14 +1554,9 @@ private fun OpenRouterSettingsDialog(
 ) {
     var apiKey by remember { mutableStateOf(currentApiKey) }
     var selectedModel by remember { mutableStateOf(currentModel) }
+    val context = LocalContext.current
 
-    val models = listOf(
-        "google/gemini-2.5-flash",
-        "anthropic/claude-3.5-haiku",
-        "openai/gpt-4o-mini",
-        "meta-llama/llama-3.3-70b-instruct",
-        "deepseek/deepseek-r1-distill-llama-70b"
-    )
+    val freeModels = OpenRouterService.FREE_MODELS
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1260,10 +1583,44 @@ private fun OpenRouterSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Enter your OpenRouter API key to enable the mini AI deep dive button. Your key is stored securely on your phone.",
+                    text = "Configure your OpenRouter API key to power AI term deep dives and automatic word generation using 100% free models.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // Link to get free key
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = AiAccent.copy(alpha = 0.12f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://openrouter.ai/keys"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Visit openrouter.ai/keys in your browser", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Get free key at openrouter.ai/keys",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = AiAccent
+                        )
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            tint = AiAccent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
 
                 TextField(
                     value = apiKey,
@@ -1277,40 +1634,64 @@ private fun OpenRouterSettingsDialog(
                 )
 
                 Text(
-                    text = "Select AI Model:",
+                    text = "Select Free AI Model:",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (m in models) {
-                        val isChosen = selectedModel == m
+                    for ((modelId, modelLabel) in freeModels) {
+                        val isChosen = selectedModel == modelId
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = if (isChosen) AiAccent.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedModel = m }
+                                .clickable { selectedModel = modelId }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = m,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = if (isChosen) AiAccent else MaterialTheme.colorScheme.onSurface
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(3.dp),
+                                            color = AiAccent.copy(alpha = 0.25f)
+                                        ) {
+                                            Text(
+                                                text = "FREE",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                color = AiAccent,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = modelLabel,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = if (isChosen) AiAccent else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Text(
+                                        text = modelId,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 9.5.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 if (isChosen) {
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
                                         tint = AiAccent,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
