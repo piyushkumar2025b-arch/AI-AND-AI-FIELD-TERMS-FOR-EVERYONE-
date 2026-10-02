@@ -44,9 +44,9 @@ jobs:
       - name: Clean Duplicate Resources & Prepare Environment
         run: |
           # 1. Eliminate duplicate launcher icon resources from git checkout
-          echo "Removing any conflicting duplicate webp icons from mipmap directories..."
-          rm -f app/src/main/res/mipmap-*/ic_launcher.webp
-          rm -f app/src/main/res/mipmap-*/ic_launcher_round.webp
+          echo "Removing any conflicting duplicate png icons from mipmap directories..."
+          rm -f app/src/main/res/mipmap-*/ic_launcher.png
+          rm -f app/src/main/res/mipmap-*/ic_launcher_round.png
 
           # 2. Ensure .env exists from template so secrets plugin does not fail
           if [ ! -f ".env" ] && [ -f ".env.example" ]; then
