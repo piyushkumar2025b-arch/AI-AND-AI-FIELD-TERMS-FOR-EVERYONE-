@@ -1,0 +1,6 @@
+{
+  "name": "AI Lexicon",
+  "description": "Human-explained offline AI, networking, and systems dictionary with points, practical uses, examples, and OpenRouter AI helper",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
