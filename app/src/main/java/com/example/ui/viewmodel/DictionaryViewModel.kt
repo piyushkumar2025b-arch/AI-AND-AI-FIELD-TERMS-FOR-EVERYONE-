@@ -10,6 +10,8 @@ import com.example.data.knowledge.OfflineKnowledgeEngine
 import com.example.data.local.AppDatabase
 import com.example.data.local.DefaultWordsCatalog
 import com.example.data.local.WordEntity
+import com.example.data.network.LexicalLanguageData
+import com.example.data.network.LexicalLanguageService
 import com.example.data.network.OpenRouterService
 import com.example.data.network.WikipediaService
 import com.example.data.network.WikipediaSummary
@@ -29,6 +31,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val prefsRepo = UserPreferencesRepository(application)
     private val openRouterService = OpenRouterService()
     private val wikipediaService = WikipediaService()
+    private val lexicalService = LexicalLanguageService()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -76,6 +79,13 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _knowledgeSources = MutableStateFlow<List<KnowledgeSourceItem>>(emptyList())
     val knowledgeSources: StateFlow<List<KnowledgeSourceItem>> = _knowledgeSources.asStateFlow()
+
+    // Lexical Language, Pronunciation & Grammar State
+    private val _lexicalLoading = MutableStateFlow(false)
+    val lexicalLoading: StateFlow<Boolean> = _lexicalLoading.asStateFlow()
+
+    private val _lexicalData = MutableStateFlow<LexicalLanguageData?>(null)
+    val lexicalData: StateFlow<LexicalLanguageData?> = _lexicalData.asStateFlow()
 
     // Dialog States
     private val _showAddWordDialog = MutableStateFlow(false)
@@ -171,12 +181,11 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private fun initializeDatabaseIfNeeded() {
         viewModelScope.launch {
             val count = wordDao.getCount()
-            val isInit = prefsRepo.isDbInitializedFlow.first()
-            if (count == 0 || !isInit) {
+            if (count == 0) {
                 val catalog = DefaultWordsCatalog.getAllCatalogWords()
                 wordDao.insertWords(catalog)
-                prefsRepo.setDbInitialized(true)
             }
+            prefsRepo.setDbInitialized(true)
         }
     }
 

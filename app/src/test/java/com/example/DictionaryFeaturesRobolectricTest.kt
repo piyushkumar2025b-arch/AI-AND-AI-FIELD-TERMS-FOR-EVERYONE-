@@ -2,9 +2,14 @@ package com.example
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.knowledge.AiMode
+import com.example.data.knowledge.KnowledgeSourceRegistry
+import com.example.data.knowledge.KnowledgeSourceType
+import com.example.data.knowledge.OfflineKnowledgeEngine
 import com.example.data.local.AppDatabase
 import com.example.data.local.DefaultWordsCatalog
 import com.example.data.local.WordEntity
+import com.example.data.network.LexicalLanguageService
 import com.example.ui.viewmodel.DictionaryViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -131,5 +136,92 @@ class DictionaryFeaturesRobolectricTest {
         assertEquals(WordEntity.LEVEL_ADVANCED, retrieved!!.level)
         assertTrue("Custom word should be marked important", retrieved.isImportant)
         assertTrue("Custom word should be flagged isCustom", retrieved.isCustom)
+    }
+
+    @Test
+    fun keepAiOutputInApp_updatesWordAndPersistsAiNotes() = runTest {
+        ShadowLooper.idleMainLooper()
+        val words = db.wordDao().getAllWordsFlow().first()
+        val testWord = words.first()
+
+        val aiExplanation = "💡 Deep Insight: Analogous to a dedicated highway lane with guaranteed bandwidth."
+        db.wordDao().updateAiNotes(
+            id = testWord.id,
+            notes = aiExplanation,
+            hasNotes = true,
+            timestamp = System.currentTimeMillis()
+        )
+
+        val updatedWord = db.wordDao().getWordById(testWord.id)
+        assertNotNull(updatedWord)
+        assertTrue("Word should indicate hasAiNotes", updatedWord!!.hasAiNotes)
+        assertEquals(aiExplanation, updatedWord.savedAiNotes)
+        assertTrue("Timestamp should be greater than 0", updatedWord.aiNotesTimestamp > 0)
+    }
+
+    @Test
+    fun offlineKnowledgeEngine_generatesAccurateExplanations() {
+        val word = WordEntity(
+            term = "TCP",
+            category = "Networking",
+            part = "Protocol",
+            humanMeaning = "Transmission Control Protocol provides reliable, ordered data delivery.",
+            keyPoints = "• 3-way handshake\n• Congestion control",
+            practicalUses = "• Web browsing\n• File transfer",
+            examples = "Used in HTTP/1.1 and HTTP/2.",
+            referenceUrl = "https://en.wikipedia.org/wiki/Transmission_Control_Protocol"
+        )
+
+        val analogy = OfflineKnowledgeEngine.generateOfflineKnowledge(word, AiMode.DEEP_ANALOGY)
+        assertTrue("Analogy should contain intuitive mental model", analogy.contains("Analogy") || analogy.contains("TCP"))
+
+        val codeLab = OfflineKnowledgeEngine.generateOfflineKnowledge(word, AiMode.CODE_LAB)
+        assertTrue("Code lab should have implementation examples", codeLab.contains("Implementation") || codeLab.contains("TCP") || codeLab.contains("Socket"))
+
+        val quiz = OfflineKnowledgeEngine.generateOfflineKnowledge(word, AiMode.INTERVIEW_QUIZ)
+        assertTrue("Interview quiz should provide question and answers", quiz.contains("Interview") || quiz.contains("Question") || quiz.contains("TCP"))
+    }
+
+    @Test
+    fun knowledgeSourceRegistry_resolvesMultiSourceAndLinguisticStandards() {
+        val word = WordEntity(
+            term = "TCP",
+            category = "Networking",
+            part = "Protocol",
+            humanMeaning = "Reliable packet transmission.",
+            keyPoints = "• Handshake",
+            practicalUses = "• Web",
+            examples = "HTTP",
+            referenceUrl = ""
+        )
+
+        val sources = KnowledgeSourceRegistry.getKnowledgeSourcesForWord(word)
+        assertTrue("Must have multiple authoritative sources", sources.size >= 4)
+
+        val hasStandard = sources.any { it.type == KnowledgeSourceType.STANDARD }
+        val hasEncyclopedia = sources.any { it.type == KnowledgeSourceType.ENCYCLOPEDIA }
+        val hasDictionary = sources.any { it.type == KnowledgeSourceType.DICTIONARY }
+
+        assertTrue("Must include an official standard/RFC", hasStandard)
+        assertTrue("Must include Wikipedia encyclopedia", hasEncyclopedia)
+        assertTrue("Must include linguistic / lexical dictionary source", hasDictionary)
+
+        val wiktionary = sources.find { it.name.contains("Wiktionary") }
+        assertNotNull("Wiktionary source must be present for correct language", wiktionary)
+
+        val merriamWebster = sources.find { it.name.contains("Merriam-Webster") }
+        assertNotNull("Merriam-Webster lexicographical source must be present", merriamWebster)
+    }
+
+    @Test
+    fun lexicalLanguageService_resolvesGrammarAndPhonetics() = runTest {
+        val service = LexicalLanguageService()
+        val data = service.resolveLexicalLanguageData("TCP")
+
+        assertNotNull(data)
+        assertEquals("TCP", data.term)
+        assertNotNull("Should have phonetic transcription", data.phonetic)
+        assertTrue("Should have formal definition", data.formalDefinition.isNotBlank())
+        assertTrue("Should provide grammatical usage tip", data.grammaticalUsageTip != null && data.grammaticalUsageTip!!.isNotBlank())
     }
 }

@@ -6,8 +6,9 @@ enum class KnowledgeSourceType(val displayName: String) {
     STANDARD("Standards & RFC"),
     RESEARCH_PAPER("Research Paper / ArXiv"),
     OFFICIAL_DOCS("Official Documentation"),
-    SPECIFICATION("Specification"),
-    ENCYCLOPEDIA("Encyclopedia")
+    SPECIFICATION("Specification & PEP"),
+    ENCYCLOPEDIA("Encyclopedia"),
+    DICTIONARY("Linguistic & Lexical")
 }
 
 data class KnowledgeSourceItem(
@@ -21,7 +22,7 @@ data class KnowledgeSourceItem(
 object KnowledgeSourceRegistry {
 
     private val CURATED_SOURCES: Map<String, List<KnowledgeSourceItem>> = mapOf(
-        // Networking & Protocols
+        // Networking & Internet Protocols
         "TCP" to listOf(
             KnowledgeSourceItem(
                 name = "RFC 9293: Transmission Control Protocol (TCP)",
@@ -117,8 +118,164 @@ object KnowledgeSourceRegistry {
                 citation = "IETF RFC 6455, Dec 2011"
             )
         ),
+        "WIREGUARD" to listOf(
+            KnowledgeSourceItem(
+                name = "WireGuard: Next Generation Kernel Network Tunnel",
+                type = KnowledgeSourceType.RESEARCH_PAPER,
+                description = "Seminal whitepaper introducing high-performance, cryptographically opinionated Noise protocol VPN tunnels.",
+                url = "https://www.wireguard.com/papers/wireguard.pdf",
+                citation = "Jason A. Donenfeld, NDSS 2017"
+            )
+        ),
+        "ZERO TRUST" to listOf(
+            KnowledgeSourceItem(
+                name = "NIST SP 800-207: Zero Trust Architecture",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Official US government enterprise cybersecurity standard defining 'never trust, always verify' per-session enforcement.",
+                url = "https://csrc.nist.gov/publications/detail/sp/800-207/final",
+                citation = "National Institute of Standards and Technology (NIST), Aug 2020"
+            )
+        ),
 
-        // AI Core, Architectures & Foundational Papers
+        // Programming Languages, Compilers & Formal Grammars
+        "PYTHON" to listOf(
+            KnowledgeSourceItem(
+                name = "The Python Language Reference & PEP Index",
+                type = KnowledgeSourceType.SPECIFICATION,
+                description = "Official formal syntax, execution model, grammar specifications, and Python Enhancement Proposals.",
+                url = "https://docs.python.org/3/reference/",
+                citation = "Python Software Foundation"
+            ),
+            KnowledgeSourceItem(
+                name = "PEP 8: Style Guide for Python Code",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Authoritative conventions for Python language code readability, naming, and layout.",
+                url = "https://peps.python.org/pep-0008/",
+                citation = "G. van Rossum, B. Warsaw, N. Coghlan"
+            )
+        ),
+        "RUST" to listOf(
+            KnowledgeSourceItem(
+                name = "The Rust Reference & Language Specification",
+                type = KnowledgeSourceType.SPECIFICATION,
+                description = "Official reference defining grammar, memory model, borrow checker semantics, and type system.",
+                url = "https://doc.rust-lang.org/reference/",
+                citation = "Rust Foundation"
+            ),
+            KnowledgeSourceItem(
+                name = "Ferrocene Language Specification",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Safety-critical, qualified specification of the Rust programming language for ISO 26262 and IEC 61508.",
+                url = "https://spec.ferrocene.dev/",
+                citation = "Ferrous Systems"
+            )
+        ),
+        "KOTLIN" to listOf(
+            KnowledgeSourceItem(
+                name = "Kotlin Language Specification",
+                type = KnowledgeSourceType.SPECIFICATION,
+                description = "Formal grammar, type system, coroutines, and semantic rules for the Kotlin programming language.",
+                url = "https://kotlinlang.org/spec/",
+                citation = "Kotlin Foundation / JetBrains"
+            )
+        ),
+        "JAVASCRIPT" to listOf(
+            KnowledgeSourceItem(
+                name = "ECMA-262: ECMAScript Language Specification",
+                type = KnowledgeSourceType.STANDARD,
+                description = "The international standard defining syntax, semantics, and built-in objects for JavaScript.",
+                url = "https://tc39.es/ecma262/",
+                citation = "Ecma International / TC39"
+            )
+        ),
+        "TYPESCRIPT" to listOf(
+            KnowledgeSourceItem(
+                name = "TypeScript Language Specification & Handbooks",
+                type = KnowledgeSourceType.SPECIFICATION,
+                description = "Structural type system, type inference, generics, and compiler transform semantics.",
+                url = "https://www.typescriptlang.org/docs/",
+                citation = "Microsoft"
+            )
+        ),
+        "C++" to listOf(
+            KnowledgeSourceItem(
+                name = "ISO/IEC 14882: Programming Languages — C++",
+                type = KnowledgeSourceType.STANDARD,
+                description = "The international standard for C++ (WG21), memory model, templates, and Standard Template Library.",
+                url = "https://en.cppreference.com/w/cpp",
+                citation = "ISO/IEC JTC 1/SC 22/WG 21"
+            )
+        ),
+        "SQL" to listOf(
+            KnowledgeSourceItem(
+                name = "ISO/IEC 9075: Database Language SQL",
+                type = KnowledgeSourceType.STANDARD,
+                description = "International standard defining the SQL syntax, relational query processing, and transactional isolation.",
+                url = "https://www.iso.org/standard/76583.html",
+                citation = "ISO/IEC JTC 1/SC 32"
+            )
+        ),
+        "JSON" to listOf(
+            KnowledgeSourceItem(
+                name = "RFC 8259 / ECMA-404: The JSON Data Interchange Format",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Strict standard defining the JavaScript Object Notation grammar and character encoding.",
+                url = "https://www.rfc-editor.org/rfc/rfc8259",
+                citation = "IETF STD 90 / Ecma International"
+            )
+        ),
+
+        // Linguistics, Lexical Standards & Language Codes
+        "UNICODE" to listOf(
+            KnowledgeSourceItem(
+                name = "The Unicode Standard Version 16.0",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Authoritative worldwide character encoding standard covering 150,000+ characters across 161 modern and historic scripts.",
+                url = "https://www.unicode.org/versions/latest/",
+                citation = "Unicode Consortium"
+            ),
+            KnowledgeSourceItem(
+                name = "Unicode Standard Annex #29: Unicode Text Segmentation",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Algorithmic specification for identifying grapheme clusters, words, and sentences across all human languages.",
+                url = "https://www.unicode.org/reports/tr29/",
+                citation = "Unicode Consortium (UAX #29)"
+            )
+        ),
+        "LANGUAGE" to listOf(
+            KnowledgeSourceItem(
+                name = "IETF BCP 47 (RFC 5646): Tags for Identifying Languages",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Standard protocol syntax for language tags (e.g. en-US, zh-Hant), subtag registries, and matching algorithms.",
+                url = "https://www.rfc-editor.org/rfc/bcp/bcp47.txt",
+                citation = "IETF BCP 47, A. Phillips, M. Davis"
+            ),
+            KnowledgeSourceItem(
+                name = "ISO 639 International Language Code Registry",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Authoritative global identifier catalog for human natural languages (ISO 639-1, 639-2, 639-3).",
+                url = "https://iso639-3.sil.org/",
+                citation = "ISO 639 Registration Authority"
+            )
+        ),
+        "GRAMMAR" to listOf(
+            KnowledgeSourceItem(
+                name = "ISO/IEC 14977: Extended Backus-Naur Form (EBNF)",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Syntactic metalanguage standard for formally defining context-free grammars and computer programming languages.",
+                url = "https://www.cl.cam.ac.uk/~mgk25/iso-14977.pdf",
+                citation = "ISO/IEC 14977:1996"
+            ),
+            KnowledgeSourceItem(
+                name = "The Chomsky Hierarchy of Formal Grammars",
+                type = KnowledgeSourceType.RESEARCH_PAPER,
+                description = "Foundational computational linguistics hierarchy: Regular, Context-Free, Context-Sensitive, and Recursively Enumerable.",
+                url = "https://en.wikipedia.org/wiki/Chomsky_hierarchy",
+                citation = "Noam Chomsky, IRE Trans. Information Theory, 1956"
+            )
+        ),
+
+        // AI Core, Architectures & Foundational Research
         "TRANSFORMER" to listOf(
             KnowledgeSourceItem(
                 name = "Attention Is All You Need",
@@ -158,13 +315,6 @@ object KnowledgeSourceRegistry {
                 description = "Seminal parameter-efficient fine-tuning paper that freezes pretrained weights and injects trainable rank decomposition matrices.",
                 url = "https://arxiv.org/abs/2106.09685",
                 citation = "Edward Hu et al., Microsoft Research / ICLR 2022"
-            ),
-            KnowledgeSourceItem(
-                name = "Hugging Face PEFT Library Documentation",
-                type = KnowledgeSourceType.OFFICIAL_DOCS,
-                description = "Practical guide to configuring rank (r), alpha scaling, and target projection layers.",
-                url = "https://huggingface.co/docs/peft",
-                citation = "Hugging Face"
             )
         ),
         "MCP" to listOf(
@@ -194,109 +344,124 @@ object KnowledgeSourceRegistry {
                 citation = "Tri Dao et al., Stanford University / NeurIPS 2022"
             )
         ),
-        "DPO" to listOf(
+        "TOKENIZATION" to listOf(
             KnowledgeSourceItem(
-                name = "Direct Preference Optimization: Your Language Model is Secretly a Reward Model",
+                name = "Neural Machine Translation of Rare Words with Subword Units (BPE)",
                 type = KnowledgeSourceType.RESEARCH_PAPER,
-                description = "Groundbreaking alignment method optimizing policy directly on human preference pairs without training a separate reward model or using RL.",
-                url = "https://arxiv.org/abs/2305.18290",
-                citation = "Rafailov et al., Stanford University / NeurIPS 2023"
-            )
-        ),
-        "CHAIN OF THOUGHT" to listOf(
-            KnowledgeSourceItem(
-                name = "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
-                type = KnowledgeSourceType.RESEARCH_PAPER,
-                description = "Foundational reasoning discovery demonstrating that step-by-step intermediate tokens dramatically improve complex multi-step logic.",
-                url = "https://arxiv.org/abs/2201.11903",
-                citation = "Wei et al., Google Research / NeurIPS 2022"
-            )
-        ),
-
-        // Harnesses, Tools & Systems
-        "DOCKER" to listOf(
-            KnowledgeSourceItem(
-                name = "Open Container Initiative (OCI) Image & Runtime Specs",
-                type = KnowledgeSourceType.SPECIFICATION,
-                description = "Open industry governance standard for container image formats, layers, and cgroup/namespace runtimes.",
-                url = "https://opencontainers.org/",
-                citation = "Linux Foundation / OCI"
+                description = "The foundational paper adapting Byte Pair Encoding (BPE) compression for subword tokenization in modern LLMs.",
+                url = "https://arxiv.org/abs/1508.07909",
+                citation = "Rico Sennrich et al., University of Edinburgh / ACL 2016"
             ),
             KnowledgeSourceItem(
-                name = "Docker Official Documentation",
+                name = "Hugging Face Tokenizers Architecture & Fast BPE",
                 type = KnowledgeSourceType.OFFICIAL_DOCS,
-                description = "Comprehensive reference for Dockerfiles, buildkit, networks, and compose topologies.",
-                url = "https://docs.docker.com",
-                citation = "Docker Inc."
+                description = "High-performance Rust-based implementation guide for Byte-Level BPE, WordPiece, and SentencePiece.",
+                url = "https://huggingface.co/docs/tokenizers",
+                citation = "Hugging Face"
             )
         ),
-        "KUBERNETES" to listOf(
+        "PROMPT INJECTION" to listOf(
             KnowledgeSourceItem(
-                name = "Kubernetes Core Architectural Concepts",
-                type = KnowledgeSourceType.OFFICIAL_DOCS,
-                description = "Official cloud-native guide for Pods, ReplicaSets, Services, Ingress controllers, and etcd consensus.",
-                url = "https://kubernetes.io/docs/concepts/",
-                citation = "Cloud Native Computing Foundation (CNCF)"
+                name = "OWASP Top 10 for Large Language Model Applications (LLM01)",
+                type = KnowledgeSourceType.STANDARD,
+                description = "Definitive industry security standard identifying direct and indirect prompt injection attack vectors and defenses.",
+                url = "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+                citation = "Open Web Application Security Project (OWASP), 2024"
             )
         ),
-        "PYTORCH" to listOf(
+        "RAFT" to listOf(
             KnowledgeSourceItem(
-                name = "PyTorch Documentation & Autograd Mechanics",
-                type = KnowledgeSourceType.OFFICIAL_DOCS,
-                description = "Official reference for dynamic computational graphs, torch.nn layers, and distributed training (DDP).",
-                url = "https://pytorch.org/docs/stable/",
-                citation = "PyTorch Foundation / Linux Foundation"
+                name = "In Search of an Understandable Consensus Algorithm (Raft)",
+                type = KnowledgeSourceType.RESEARCH_PAPER,
+                description = "Authoritative consensus algorithm paper decomposing distributed state machine replication into leader election, log replication, and safety.",
+                url = "https://raft.github.io/raft.pdf",
+                citation = "Ongaro & Ousterhout, Stanford University / USENIX ATC 2014"
             )
         ),
-        "LANGCHAIN" to listOf(
+        "CAP THEOREM" to listOf(
             KnowledgeSourceItem(
-                name = "LangChain Architecture & Expression Language (LCEL)",
-                type = KnowledgeSourceType.OFFICIAL_DOCS,
-                description = "Framework documentation for composable chains, agent runtimes, memory, and tool integration.",
-                url = "https://python.langchain.com/docs/",
-                citation = "LangChain Inc."
+                name = "Brewer's Conjecture and Consistent, Available, Partition-Tolerant Web Services",
+                type = KnowledgeSourceType.RESEARCH_PAPER,
+                description = "Formal proof establishing that asynchronous network systems cannot simultaneously achieve Consistency, Availability, and Partition Tolerance.",
+                url = "https://users.ece.cmu.edu/~adrian/731-sp04/readings/GL-cap.pdf",
+                citation = "Gilbert & Lynch, MIT / ACM SIGACT 2002"
             )
         )
     )
 
     /**
-     * Resolves knowledge sources for any word: returns curated specific standards/papers
-     * or dynamically constructs authoritative sources based on category and reference URL.
+     * Resolves multi-source knowledge grounded for any word: returns curated specific
+     * standards/papers as well as universal linguistic, lexical, and encyclopedic sources.
      */
     fun getKnowledgeSourcesForWord(word: WordEntity): List<KnowledgeSourceItem> {
+        val list = mutableListOf<KnowledgeSourceItem>()
         val upperTerm = word.term.trim().uppercase()
-        val found = CURATED_SOURCES[upperTerm]
-        if (!found.isNullOrEmpty()) {
-            return found
-        }
 
-        // Check if any key is contained in the term
-        for ((key, sources) in CURATED_SOURCES) {
-            if (upperTerm.contains(key) || key.contains(upperTerm)) {
-                return sources
+        // 1. Add specific curated technical standards/specifications if available
+        val directCurated = CURATED_SOURCES[upperTerm]
+        if (!directCurated.isNullOrEmpty()) {
+            list.addAll(directCurated)
+        } else {
+            for ((key, sources) in CURATED_SOURCES) {
+                if (upperTerm.contains(key) || key.contains(upperTerm)) {
+                    list.addAll(sources)
+                    break
+                }
             }
         }
 
-        // Dynamic synthesis based on word category and reference
-        val list = mutableListOf<KnowledgeSourceItem>()
-
-        // Wikipedia Encyclopedia source
-        val wikiUrl = if (word.referenceUrl.isNotBlank()) {
+        // 2. Wikipedia Encyclopedic Knowledge Source
+        val cleanEncodedTerm = word.term.trim().replace(" ", "_")
+        val wikiUrl = if (word.referenceUrl.isNotBlank() && word.referenceUrl.contains("wikipedia")) {
             word.referenceUrl
         } else {
-            "https://en.wikipedia.org/wiki/${word.term.trim().replace(" ", "_")}"
+            "https://en.wikipedia.org/wiki/$cleanEncodedTerm"
         }
         list.add(
             KnowledgeSourceItem(
                 name = "Wikipedia: ${word.term}",
                 type = KnowledgeSourceType.ENCYCLOPEDIA,
-                description = "Peer-reviewed, open encyclopedic reference and historical background for ${word.term}.",
+                description = "Peer-reviewed, open encyclopedic reference and historical background for '${word.term}'.",
                 url = wikiUrl,
                 citation = "Wikipedia, The Free Encyclopedia"
             )
         )
 
-        // Add domain-specific source
+        // 3. Wiktionary Linguistic & Lexical Grammar Source
+        list.add(
+            KnowledgeSourceItem(
+                name = "Wiktionary: ${word.term}",
+                type = KnowledgeSourceType.DICTIONARY,
+                description = "Official Wiktionary lexical entry: grammatical definitions, pronunciation, parts of speech, and etymology for '${word.term}'.",
+                url = "https://en.wiktionary.org/wiki/$cleanEncodedTerm",
+                citation = "Wiktionary, Wikimedia Lexical Database"
+            )
+        )
+
+        // 4. Merriam-Webster English Lexicographical Reference
+        val mwTerm = word.term.trim().lowercase().replace(" ", "%20")
+        list.add(
+            KnowledgeSourceItem(
+                name = "Merriam-Webster: ${word.term}",
+                type = KnowledgeSourceType.DICTIONARY,
+                description = "Authoritative American English definition, phonetic pronunciation, word origins, and authentic usage sentences.",
+                url = "https://www.merriam-webster.com/dictionary/$mwTerm",
+                citation = "Merriam-Webster Collegiate Dictionary"
+            )
+        )
+
+        // 5. Etymology and Language Origins (Etymonline)
+        list.add(
+            KnowledgeSourceItem(
+                name = "Online Etymology Dictionary",
+                type = KnowledgeSourceType.DICTIONARY,
+                description = "Linguistic historical origins, proto-Indo-European roots, and semantic evolution of '${word.term}'.",
+                url = "https://www.etymonline.com/word/$mwTerm",
+                citation = "Douglas Harper / Online Etymology Dictionary"
+            )
+        )
+
+        // 6. Category-specific authoritative sources (RFCs, W3C, ACM, ArXiv)
         val categoryLower = word.category.lowercase()
         when {
             categoryLower.contains("networking") -> {
@@ -309,28 +474,46 @@ object KnowledgeSourceRegistry {
                         citation = "Internet Engineering Task Force (IETF)"
                     )
                 )
-            }
-            categoryLower.contains("ai") || categoryLower.contains("model") || categoryLower.contains("reasoning") -> {
                 list.add(
                     KnowledgeSourceItem(
-                        name = "ArXiv Computer Science & Machine Learning Repository",
+                        name = "IANA Protocol Registries & Port Numbers",
+                        type = KnowledgeSourceType.STANDARD,
+                        description = "Internet Assigned Numbers Authority authoritative registry of protocols, port numbers, and enterprise numbers.",
+                        url = "https://www.iana.org/protocols",
+                        citation = "Internet Assigned Numbers Authority (IANA)"
+                    )
+                )
+            }
+            categoryLower.contains("ai") || categoryLower.contains("model") || categoryLower.contains("reasoning") || categoryLower.contains("nlp") -> {
+                list.add(
+                    KnowledgeSourceItem(
+                        name = "ArXiv Computer Science & Computation Repository",
                         type = KnowledgeSourceType.RESEARCH_PAPER,
-                        description = "Open-access archive of 2M+ scholarly articles in computer science and machine learning (cs.AI / cs.LG / cs.CL).",
+                        description = "Open-access archive of 2M+ scholarly articles in computational linguistics (cs.CL), AI (cs.AI), and machine learning (cs.LG).",
                         url = "https://arxiv.org/search/?query=${word.term.replace(" ", "+")}&searchtype=all",
                         citation = "Cornell University ArXiv"
                     )
                 )
                 list.add(
                     KnowledgeSourceItem(
-                        name = "Hugging Face Models & Research Hub",
+                        name = "ACL Anthology (Computational Linguistics)",
+                        type = KnowledgeSourceType.RESEARCH_PAPER,
+                        description = "Digital archive of research papers in natural language processing and computational linguistics.",
+                        url = "https://aclanthology.org/",
+                        citation = "Association for Computational Linguistics (ACL)"
+                    )
+                )
+                list.add(
+                    KnowledgeSourceItem(
+                        name = "Hugging Face Models & Papers Hub",
                         type = KnowledgeSourceType.OFFICIAL_DOCS,
-                        description = "Open source community weights, benchmark evals, and architectural implementation notes.",
+                        description = "Open source community weights, tokenizers, benchmark evals, and architectural implementation notes.",
                         url = "https://huggingface.co/models",
                         citation = "Hugging Face"
                     )
                 )
             }
-            categoryLower.contains("system") || categoryLower.contains("devops") || categoryLower.contains("ci/cd") -> {
+            categoryLower.contains("system") || categoryLower.contains("devops") || categoryLower.contains("ci/cd") || categoryLower.contains("cloud") -> {
                 list.add(
                     KnowledgeSourceItem(
                         name = "Cloud Native Computing Foundation (CNCF)",
@@ -340,11 +523,29 @@ object KnowledgeSourceRegistry {
                         citation = "CNCF / Linux Foundation"
                     )
                 )
+                list.add(
+                    KnowledgeSourceItem(
+                        name = "USENIX Advanced Computing Systems Association",
+                        type = KnowledgeSourceType.RESEARCH_PAPER,
+                        description = "Peer-reviewed proceedings from OSDI, SOSP, FAST, and NSDI systems conferences.",
+                        url = "https://www.usenix.org/conferences",
+                        citation = "USENIX Association"
+                    )
+                )
             }
             else -> {
                 list.add(
                     KnowledgeSourceItem(
-                        name = "MDN & Developer Technical Specs",
+                        name = "W3C Web Standards & Recommendations",
+                        type = KnowledgeSourceType.STANDARD,
+                        description = "World Wide Web Consortium international standards for Web architecture, accessibility, and internationalization.",
+                        url = "https://www.w3.org/standards/",
+                        citation = "World Wide Web Consortium (W3C)"
+                    )
+                )
+                list.add(
+                    KnowledgeSourceItem(
+                        name = "MDN Web Docs & Technical Specifications",
                         type = KnowledgeSourceType.OFFICIAL_DOCS,
                         description = "Authoritative web standards, software architecture, and developer specifications.",
                         url = "https://developer.mozilla.org/en-US/search?q=${word.term.replace(" ", "+")}",
