@@ -11,7 +11,8 @@ import androidx.room.PrimaryKey
         Index(value = ["category"]),
         Index(value = ["part"]),
         Index(value = ["level"]),
-        Index(value = ["isImportant"])
+        Index(value = ["isImportant"]),
+        Index(value = ["hasAiNotes"])
     ]
 )
 data class WordEntity(
@@ -29,6 +30,9 @@ data class WordEntity(
     val isImportant: Boolean = false,
     val isCustom: Boolean = false,
     val isBookmarked: Boolean = false,
+    val savedAiNotes: String = "", // Persistent AI-generated insights, code, & notes kept in app
+    val hasAiNotes: Boolean = false, // Quick query flag for words with AI knowledge kept
+    val aiNotesTimestamp: Long = 0L,
     val timestamp: Long = System.currentTimeMillis()
 ) {
     companion object {

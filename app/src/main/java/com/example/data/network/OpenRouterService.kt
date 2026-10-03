@@ -39,34 +39,86 @@ class OpenRouterService {
         model: String,
         term: String,
         existingMeaning: String
+    ): Result<String> {
+        return queryWordInsightsWithMode(
+            apiKey = apiKey,
+            model = model,
+            term = term,
+            existingMeaning = existingMeaning,
+            mode = com.example.data.knowledge.AiMode.DEEP_ANALOGY,
+            customQuestion = null,
+            wikipediaContext = null
+        )
+    }
+
+    suspend fun queryWordInsightsWithMode(
+        apiKey: String,
+        model: String,
+        term: String,
+        existingMeaning: String,
+        mode: com.example.data.knowledge.AiMode,
+        customQuestion: String? = null,
+        wikipediaContext: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
-                IllegalArgumentException("OpenRouter API key is missing. Tap Settings to enter your free key from openrouter.ai/keys.")
+                IllegalArgumentException("OpenRouter API key is missing. Tap Settings to enter your free key from openrouter.ai/keys, or tap 'Use Offline Smart Knowledge' for instant breakdown.")
             )
         }
 
         try {
             val selectedModel = if (model.isBlank()) DEFAULT_FREE_MODEL else model
+            val knowledgeContextSnippet = if (!wikipediaContext.isNullOrBlank()) {
+                "\nGrounding Knowledge (from authoritative encyclopedic sources):\n\"\"\"\n$wikipediaContext\n\"\"\"\n"
+            } else ""
+
+            val systemPrompt = when (mode) {
+                com.example.data.knowledge.AiMode.DEEP_ANALOGY ->
+                    "You are a friendly, brilliant computer science educator. Provide a memorable, creative everyday human analogy for the concept, explain how it turns chaos into order, and share a practical real-world scenario. Use clean markdown formatting and bullet points."
+
+                com.example.data.knowledge.AiMode.CODE_LAB ->
+                    "You are a principal software engineer. Provide a concrete, practical, runnable code snippet or CLI command demonstrating how this concept works in production. Use realistic Python, Bash, or appropriate language snippets, clear comments, and production tips."
+
+                com.example.data.knowledge.AiMode.STAFF_ENGINEER ->
+                    "You are a staff infrastructure architect. Provide a rigorous architectural deep dive: primary bottlenecks (latency/concurrency), subtle failure modes, trade-offs (e.g. consistency vs latency), and a production readiness checklist."
+
+                com.example.data.knowledge.AiMode.INTERVIEW_QUIZ ->
+                    "You are a senior technical interviewer at a top tech company. Provide 3 high-impact interview questions testing deep understanding of this term, along with clear model answers and key technical keywords candidate should mention."
+
+                com.example.data.knowledge.AiMode.CUSTOM_QNA ->
+                    "You are an expert AI, networking, and systems mentor. Answer the user's specific question about this concept clearly, accurately, and concisely."
+            }
+
+            val userContent = when (mode) {
+                com.example.data.knowledge.AiMode.DEEP_ANALOGY ->
+                    "Explain the term \"$term\" with an intuitive, unforgettable human analogy.$knowledgeContextSnippet Context: $existingMeaning"
+
+                com.example.data.knowledge.AiMode.CODE_LAB ->
+                    "Show practical code snippets and CLI tools demonstrating \"$term\".$knowledgeContextSnippet Context: $existingMeaning"
+
+                com.example.data.knowledge.AiMode.STAFF_ENGINEER ->
+                    "Provide a staff engineer architectural breakdown of \"$term\" including trade-offs and failure modes.$knowledgeContextSnippet Context: $existingMeaning"
+
+                com.example.data.knowledge.AiMode.INTERVIEW_QUIZ ->
+                    "Give me 3 top technical interview flashcard questions and answers for \"$term\".$knowledgeContextSnippet Context: $existingMeaning"
+
+                com.example.data.knowledge.AiMode.CUSTOM_QNA ->
+                    "Question on \"$term\": ${customQuestion ?: "Explain this concept in depth."}$knowledgeContextSnippet Context: $existingMeaning"
+            }
+
             val jsonPayload = JSONObject().apply {
                 put("model", selectedModel)
-                put("max_tokens", 900)
+                put("max_tokens", 1000)
                 put("temperature", 0.3)
 
                 val messagesArray = JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
-                        put(
-                            "content",
-                            "You are a friendly, expert computer science teacher. When asked about an AI, networking, or engineering term, provide:\n1. A memorable everyday human analogy\n2. Key architectural nuances & common pitfalls\n3. A practical real-world scenario\nKeep language clear, humanized, and formatted with clean bullet points."
-                        )
+                        put("content", systemPrompt)
                     })
                     put(JSONObject().apply {
                         put("role", "user")
-                        put(
-                            "content",
-                            "Explain the term \"$term\" in depth. Context summary: $existingMeaning. Give me an intuitive analogy, nuances/pitfalls, and real-world implementation advice."
-                        )
+                        put("content", userContent)
                     })
                 }
                 put("messages", messagesArray)
@@ -117,7 +169,8 @@ class OpenRouterService {
     suspend fun generateWordDefinition(
         apiKey: String,
         model: String,
-        term: String
+        term: String,
+        wikipediaContext: String? = null
     ): Result<WordEntity> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
             return@withContext Result.failure(
@@ -127,9 +180,14 @@ class OpenRouterService {
 
         try {
             val selectedModel = if (model.isBlank()) DEFAULT_FREE_MODEL else model
+            val wikiGrounding = if (!wikipediaContext.isNullOrBlank()) {
+                "\nGrounding reference from Wikipedia:\n$wikipediaContext\n"
+            } else ""
+
             val prompt = """
                 You are an expert technical dictionary lexicographer.
                 The user wants to add the term: "$term" into an offline AI, Networking, and Systems dictionary.
+                $wikiGrounding
                 Generate the definition strictly matching this JSON schema:
                 {
                   "term": "$term",

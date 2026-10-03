@@ -60,4 +60,13 @@ interface WordDao {
 
     @Query("UPDATE words SET level = :level WHERE id = :id")
     suspend fun updateLevel(id: Long, level: String)
+
+    @Query("UPDATE words SET savedAiNotes = :notes, hasAiNotes = :hasNotes, aiNotesTimestamp = :timestamp WHERE id = :id")
+    suspend fun updateAiNotes(id: Long, notes: String, hasNotes: Boolean, timestamp: Long = System.currentTimeMillis())
+
+    @Query("UPDATE words SET humanMeaning = :meaning WHERE id = :id")
+    suspend fun updateHumanMeaning(id: Long, meaning: String)
+
+    @Query("SELECT * FROM words WHERE hasAiNotes = 1 ORDER BY LOWER(term) ASC")
+    fun getAiKeptWordsFlow(): Flow<List<WordEntity>>
 }

@@ -75,4 +75,52 @@ class ExampleUnitTest {
         assertEquals("ADVANCED", advLvl)
         assertTrue(advImp)
     }
+
+    @Test
+    fun knowledgeSourceRegistry_resolvesAuthoritativeSources() {
+        val tcpWord = DefaultWordsCatalog.getAllCatalogWords().first { it.term.equals("TCP", ignoreCase = true) }
+        val tcpSources = com.example.data.knowledge.KnowledgeSourceRegistry.getKnowledgeSourcesForWord(tcpWord)
+        assertTrue("TCP should have RFC standard sources", tcpSources.isNotEmpty())
+        assertTrue("TCP sources should include RFC 9293", tcpSources.any { it.name.contains("RFC 9293") })
+
+        val transformerWord = DefaultWordsCatalog.getAllCatalogWords().first { it.term.equals("Transformer", ignoreCase = true) }
+        val transformerSources = com.example.data.knowledge.KnowledgeSourceRegistry.getKnowledgeSourcesForWord(transformerWord)
+        assertTrue("Transformer should have research paper source", transformerSources.any { it.type == com.example.data.knowledge.KnowledgeSourceType.RESEARCH_PAPER })
+        assertTrue("Should cite Attention Is All You Need", transformerSources.any { it.name.contains("Attention Is All You Need") })
+    }
+
+    @Test
+    fun offlineKnowledgeEngine_generatesMultiModeContent() {
+        val word = DefaultWordsCatalog.getAllCatalogWords().first { it.term.equals("RAG", ignoreCase = true) }
+
+        val analogy = com.example.data.knowledge.OfflineKnowledgeEngine.generateOfflineKnowledge(word, com.example.data.knowledge.AiMode.DEEP_ANALOGY)
+        assertTrue("Analogy should be non-empty", analogy.isNotBlank())
+        assertTrue("Analogy should contain term", analogy.contains("RAG"))
+
+        val codeLab = com.example.data.knowledge.OfflineKnowledgeEngine.generateOfflineKnowledge(word, com.example.data.knowledge.AiMode.CODE_LAB)
+        assertTrue("Code lab should contain code block", codeLab.contains("```"))
+
+        val quiz = com.example.data.knowledge.OfflineKnowledgeEngine.generateOfflineKnowledge(word, com.example.data.knowledge.AiMode.INTERVIEW_QUIZ)
+        assertTrue("Quiz should contain questions and answers", quiz.contains("Q1") && quiz.contains("Answer"))
+
+        val staff = com.example.data.knowledge.OfflineKnowledgeEngine.generateOfflineKnowledge(word, com.example.data.knowledge.AiMode.STAFF_ENGINEER)
+        assertTrue("Staff breakdown should contain trade-offs and checklist", staff.contains("Trade-Off") || staff.contains("Checklist") || staff.contains("Bottlenecks"))
+    }
+
+    @Test
+    fun wordEntity_supportsAiNotesPersistence() {
+        val word = com.example.data.local.WordEntity(
+            term = "TestTerm",
+            category = "AI Core",
+            part = "Custom",
+            humanMeaning = "Human explanation",
+            keyPoints = "Points",
+            practicalUses = "Uses",
+            examples = "Examples",
+            savedAiNotes = "This is a persisted AI insight kept in the app.",
+            hasAiNotes = true
+        )
+        assertTrue(word.hasAiNotes)
+        assertEquals("This is a persisted AI insight kept in the app.", word.savedAiNotes)
+    }
 }

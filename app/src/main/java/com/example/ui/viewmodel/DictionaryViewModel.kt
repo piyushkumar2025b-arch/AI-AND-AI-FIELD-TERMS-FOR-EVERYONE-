@@ -3,10 +3,16 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.knowledge.AiMode
+import com.example.data.knowledge.KnowledgeSourceItem
+import com.example.data.knowledge.KnowledgeSourceRegistry
+import com.example.data.knowledge.OfflineKnowledgeEngine
 import com.example.data.local.AppDatabase
 import com.example.data.local.DefaultWordsCatalog
 import com.example.data.local.WordEntity
 import com.example.data.network.OpenRouterService
+import com.example.data.network.WikipediaService
+import com.example.data.network.WikipediaSummary
 import com.example.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +28,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val wordDao = db.wordDao()
     private val prefsRepo = UserPreferencesRepository(application)
     private val openRouterService = OpenRouterService()
+    private val wikipediaService = WikipediaService()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -35,11 +42,18 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _selectedLetter = MutableStateFlow<String?>(null)
     val selectedLetter: StateFlow<String?> = _selectedLetter.asStateFlow()
 
-    private val _selectedFilter = MutableStateFlow("ALL") // "ALL", "NETWORKING", "HARNESSES", "MASTER_LIST", "BOOKMARKED", "CUSTOM"
+    private val _selectedFilter = MutableStateFlow("ALL")
     val selectedFilter: StateFlow<String> = _selectedFilter.asStateFlow()
 
     private val _selectedWord = MutableStateFlow<WordEntity?>(null)
     val selectedWord: StateFlow<WordEntity?> = _selectedWord.asStateFlow()
+
+    // Multi-mode AI State
+    private val _activeAiMode = MutableStateFlow(AiMode.DEEP_ANALOGY)
+    val activeAiMode: StateFlow<AiMode> = _activeAiMode.asStateFlow()
+
+    private val _customAiQuestion = MutableStateFlow("")
+    val customAiQuestion: StateFlow<String> = _customAiQuestion.asStateFlow()
 
     private val _openRouterLoading = MutableStateFlow(false)
     val openRouterLoading: StateFlow<Boolean> = _openRouterLoading.asStateFlow()
@@ -50,6 +64,20 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _openRouterError = MutableStateFlow<String?>(null)
     val openRouterError: StateFlow<String?> = _openRouterError.asStateFlow()
 
+    private val _isAiKeptSavedSuccess = MutableStateFlow(false)
+    val isAiKeptSavedSuccess: StateFlow<Boolean> = _isAiKeptSavedSuccess.asStateFlow()
+
+    // Wikipedia & Knowledge Sources State
+    private val _wikipediaLoading = MutableStateFlow(false)
+    val wikipediaLoading: StateFlow<Boolean> = _wikipediaLoading.asStateFlow()
+
+    private val _wikipediaSummary = MutableStateFlow<WikipediaSummary?>(null)
+    val wikipediaSummary: StateFlow<WikipediaSummary?> = _wikipediaSummary.asStateFlow()
+
+    private val _knowledgeSources = MutableStateFlow<List<KnowledgeSourceItem>>(emptyList())
+    val knowledgeSources: StateFlow<List<KnowledgeSourceItem>> = _knowledgeSources.asStateFlow()
+
+    // Dialog States
     private val _showAddWordDialog = MutableStateFlow(false)
     val showAddWordDialog: StateFlow<Boolean> = _showAddWordDialog.asStateFlow()
 
@@ -83,6 +111,12 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         "openrouter/free"
     )
 
+    val autoKeepAiInApp: StateFlow<Boolean> = prefsRepo.autoKeepAiInAppFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        true
+    )
+
     // Master stream of all words from Room database
     private val rawWordsFlow = wordDao.getAllWordsFlow()
 
@@ -97,6 +131,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         // 1. Filter by section/filter
         when (filter) {
             "IMPORTANT" -> list = list.filter { it.isImportant }
+            "AI_KEPT" -> list = list.filter { it.hasAiNotes || it.savedAiNotes.isNotBlank() }
             "LEVEL_BASIC" -> list = list.filter { it.level == WordEntity.LEVEL_BASIC }
             "LEVEL_INTERMEDIATE" -> list = list.filter { it.level == WordEntity.LEVEL_INTERMEDIATE }
             "LEVEL_ADVANCED" -> list = list.filter { it.level == WordEntity.LEVEL_ADVANCED }
@@ -120,7 +155,8 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 word.humanMeaning.lowercase().contains(q) ||
                 word.keyPoints.lowercase().contains(q) ||
                 word.category.lowercase().contains(q) ||
-                word.practicalUses.lowercase().contains(q)
+                word.practicalUses.lowercase().contains(q) ||
+                word.savedAiNotes.lowercase().contains(q)
             }
         }
 
@@ -180,6 +216,40 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         _selectedWord.value = word
         _openRouterResult.value = null
         _openRouterError.value = null
+        _isAiKeptSavedSuccess.value = false
+        _wikipediaSummary.value = null
+
+        if (word != null) {
+            _knowledgeSources.value = KnowledgeSourceRegistry.getKnowledgeSourcesForWord(word)
+            // Pre-fetch Wikipedia summary in background for richer knowledge
+            fetchWikipediaKnowledge(word)
+        } else {
+            _knowledgeSources.value = emptyList()
+        }
+    }
+
+    fun setActiveAiMode(mode: AiMode) {
+        _activeAiMode.value = mode
+    }
+
+    fun setCustomAiQuestion(question: String) {
+        _customAiQuestion.value = question
+    }
+
+    fun fetchWikipediaKnowledge(word: WordEntity) {
+        viewModelScope.launch {
+            _wikipediaLoading.value = true
+            val result = wikipediaService.fetchSummary(word.term)
+            result.fold(
+                onSuccess = { summary ->
+                    _wikipediaSummary.value = summary
+                    _wikipediaLoading.value = false
+                },
+                onFailure = {
+                    _wikipediaLoading.value = false
+                }
+            )
+        }
     }
 
     fun toggleBookmark(word: WordEntity) {
@@ -199,6 +269,106 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             if (_selectedWord.value?.id == word.id) {
                 _selectedWord.value = word.copy(isImportant = newStatus)
             }
+        }
+    }
+
+    // AI "Keep in App" Feature: permanently retains AI explanations/code on this word in Room DB
+    fun keepAiOutputInApp(word: WordEntity, aiContent: String) {
+        val trimmed = aiContent.trim()
+        if (trimmed.isBlank()) return
+
+        viewModelScope.launch {
+            val currentNotes = word.savedAiNotes.trim()
+            val updatedNotes = if (currentNotes.isBlank()) {
+                trimmed
+            } else if (!currentNotes.contains(trimmed)) {
+                "$currentNotes\n\n---\n\n$trimmed"
+            } else {
+                currentNotes
+            }
+
+            wordDao.updateAiNotes(
+                id = word.id,
+                notes = updatedNotes,
+                hasNotes = true,
+                timestamp = System.currentTimeMillis()
+            )
+
+            val updatedWord = word.copy(
+                savedAiNotes = updatedNotes,
+                hasAiNotes = true,
+                aiNotesTimestamp = System.currentTimeMillis()
+            )
+
+            if (_selectedWord.value?.id == word.id) {
+                _selectedWord.value = updatedWord
+            }
+            _isAiKeptSavedSuccess.value = true
+        }
+    }
+
+    fun applyAiAsMainDefinition(word: WordEntity, aiContent: String) {
+        val trimmed = aiContent.trim()
+        if (trimmed.isBlank()) return
+
+        viewModelScope.launch {
+            // Take the leading sentence/paragraph as the refreshed human meaning
+            val firstPara = trimmed.lines().firstOrNull { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("💡") } ?: trimmed.take(250)
+            val cleanMeaning = firstPara.removePrefix("•").trim()
+
+            wordDao.updateHumanMeaning(word.id, cleanMeaning)
+            val updatedWord = word.copy(humanMeaning = cleanMeaning)
+
+            if (_selectedWord.value?.id == word.id) {
+                _selectedWord.value = updatedWord
+            }
+            _isAiKeptSavedSuccess.value = true
+        }
+    }
+
+    fun saveCustomAiNotes(word: WordEntity, notes: String) {
+        val trimmed = notes.trim()
+        viewModelScope.launch {
+            wordDao.updateAiNotes(
+                id = word.id,
+                notes = trimmed,
+                hasNotes = trimmed.isNotBlank(),
+                timestamp = System.currentTimeMillis()
+            )
+            val updatedWord = word.copy(
+                savedAiNotes = trimmed,
+                hasAiNotes = trimmed.isNotBlank(),
+                aiNotesTimestamp = System.currentTimeMillis()
+            )
+            if (_selectedWord.value?.id == word.id) {
+                _selectedWord.value = updatedWord
+            }
+        }
+    }
+
+    fun clearAiNotesFromWord(word: WordEntity) {
+        viewModelScope.launch {
+            wordDao.updateAiNotes(
+                id = word.id,
+                notes = "",
+                hasNotes = false,
+                timestamp = 0L
+            )
+            val updatedWord = word.copy(
+                savedAiNotes = "",
+                hasAiNotes = false,
+                aiNotesTimestamp = 0L
+            )
+            if (_selectedWord.value?.id == word.id) {
+                _selectedWord.value = updatedWord
+            }
+            _isAiKeptSavedSuccess.value = false
+        }
+    }
+
+    fun toggleAutoKeepAi(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setAutoKeepAiInApp(enabled)
         }
     }
 
@@ -226,11 +396,13 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 level = level,
                 isImportant = isImportant,
                 isCustom = true,
-                isBookmarked = false
+                isBookmarked = false,
+                savedAiNotes = "",
+                hasAiNotes = false
             )
             val id = wordDao.insertWord(newWord)
             val insertedWord = newWord.copy(id = id)
-            _selectedWord.value = insertedWord
+            selectWord(insertedWord)
             _showAddWordDialog.value = false
         }
     }
@@ -239,7 +411,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             wordDao.deleteWord(word)
             if (_selectedWord.value?.id == word.id) {
-                _selectedWord.value = null
+                selectWord(null)
             }
         }
     }
@@ -287,17 +459,25 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             _isAiGeneratingWord.value = true
             _aiWordError.value = null
 
+            // First check if Wikipedia has context to ground the definition
+            val wikiSummary = try {
+                wikipediaService.fetchSummary(trimmed).getOrNull()
+            } catch (e: Exception) { null }
+
+            val wikiContext = wikiSummary?.extract
+
             val result = openRouterService.generateWordDefinition(
                 apiKey = key,
                 model = openRouterModel.value,
-                term = trimmed
+                term = trimmed,
+                wikipediaContext = wikiContext
             )
 
             result.fold(
                 onSuccess = { generatedEntity ->
                     val insertedId = wordDao.insertWord(generatedEntity)
                     val fullWord = generatedEntity.copy(id = insertedId)
-                    _selectedWord.value = fullWord
+                    selectWord(fullWord)
                     _isAiGeneratingWord.value = false
                     _showAiAddDialog.value = false
                     _showAddWordDialog.value = false
@@ -377,10 +557,34 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun askOpenRouter(word: WordEntity) {
+        askAiWithMode(
+            word = word,
+            mode = _activeAiMode.value,
+            customQuestion = _customAiQuestion.value
+        )
+    }
+
+    fun askAiWithMode(
+        word: WordEntity,
+        mode: AiMode,
+        customQuestion: String? = null,
+        forceOfflineFallback: Boolean = false
+    ) {
+        _activeAiMode.value = mode
+        _isAiKeptSavedSuccess.value = false
+
         val key = openRouterApiKey.value
-        if (key.isBlank()) {
-            _openRouterError.value = "OpenRouter API Key not set. Tap Settings to enter your key."
-            _showSettingsDialog.value = true
+        // If force offline or key is blank, immediately use the Smart Offline Knowledge Engine
+        if (forceOfflineFallback || key.isBlank()) {
+            val offlineOutput = OfflineKnowledgeEngine.generateOfflineKnowledge(word, mode, customQuestion)
+            _openRouterResult.value = offlineOutput
+            _openRouterError.value = null
+            _openRouterLoading.value = false
+
+            // Auto-keep in app if enabled
+            if (autoKeepAiInApp.value) {
+                keepAiOutputInApp(word, offlineOutput)
+            }
             return
         }
 
@@ -389,20 +593,31 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
             _openRouterError.value = null
             _openRouterResult.value = null
 
-            val result = openRouterService.queryWordInsights(
+            val wikiContext = _wikipediaSummary.value?.extract
+
+            val result = openRouterService.queryWordInsightsWithMode(
                 apiKey = key,
                 model = openRouterModel.value,
                 term = word.term,
-                existingMeaning = word.humanMeaning
+                existingMeaning = word.humanMeaning,
+                mode = mode,
+                customQuestion = customQuestion,
+                wikipediaContext = wikiContext
             )
 
             result.fold(
                 onSuccess = { content ->
                     _openRouterResult.value = content
                     _openRouterLoading.value = false
+
+                    // If auto-keep is on, immediately keep in app!
+                    if (autoKeepAiInApp.value) {
+                        keepAiOutputInApp(word, content)
+                    }
                 },
                 onFailure = { error ->
-                    _openRouterError.value = error.message ?: "Failed to query OpenRouter AI"
+                    // Offer fallback seamlessly if network/key issues
+                    _openRouterError.value = error.message ?: "Failed to query AI model."
                     _openRouterLoading.value = false
                 }
             )
@@ -412,5 +627,6 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     fun clearOpenRouterOutput() {
         _openRouterResult.value = null
         _openRouterError.value = null
+        _isAiKeptSavedSuccess.value = false
     }
 }
