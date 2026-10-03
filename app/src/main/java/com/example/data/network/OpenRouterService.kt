@@ -1,5 +1,6 @@
 package com.example.data.network
 
+import com.example.data.local.DefaultWordsCatalog
 import com.example.data.local.WordEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -133,6 +134,8 @@ class OpenRouterService {
                 {
                   "term": "$term",
                   "category": "One of: AI Core, Agent Harnesses, Networking, Frameworks & SDKs, Evals & Observability, MCP & Tooling, Vector Databases, Gateways & Inference, CI/CD & DevOps, System Design, Reasoning & Models, Safety & Alignment, Prompt Engineering, RAG & Context, Data & Datasets, Careers & Jobs",
+                  "level": "One of: BASIC, INTERMEDIATE, ADVANCED (based on conceptual difficulty)",
+                  "isImportant": true or false (true if this is a high-value core foundational term everyone should understand),
                   "humanMeaning": "Clear, friendly, conversational plain-English explanation as if explaining to someone normally without jargon (1-2 sentences).",
                   "keyPoints": "• First key point about technical mechanism.\n• Second key point about how it works.\n• Third key point about why it matters.",
                   "practicalUses": "• First real-world practical use case.\n• Second real-world use case in industry.",
@@ -219,6 +222,20 @@ class OpenRouterService {
                 val examples = parsedJson.optString("examples", "Example: Used widely in cutting-edge development and engineering workflows.")
                 val referenceUrl = parsedJson.optString("referenceUrl", "https://en.wikipedia.org/wiki/${term.trim().replace(" ", "_")}")
 
+                val (defaultLevel, defaultImportant) = DefaultWordsCatalog.classifyWord(generatedTerm, category, "Custom")
+                val parsedLevelRaw = parsedJson.optString("level", "").trim().uppercase()
+                val finalLevel = when (parsedLevelRaw) {
+                    "ADVANCED" -> WordEntity.LEVEL_ADVANCED
+                    "INTERMEDIATE" -> WordEntity.LEVEL_INTERMEDIATE
+                    "BASIC" -> WordEntity.LEVEL_BASIC
+                    else -> defaultLevel
+                }
+                val finalImportant = if (parsedJson.has("isImportant")) {
+                    parsedJson.optBoolean("isImportant", defaultImportant)
+                } else {
+                    defaultImportant
+                }
+
                 val entity = WordEntity(
                     term = generatedTerm,
                     category = category,
@@ -228,6 +245,8 @@ class OpenRouterService {
                     practicalUses = practicalUses,
                     examples = examples,
                     referenceUrl = referenceUrl,
+                    level = finalLevel,
+                    isImportant = finalImportant,
                     isCustom = true,
                     isBookmarked = false
                 )

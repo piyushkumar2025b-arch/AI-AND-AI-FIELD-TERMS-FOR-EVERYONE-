@@ -17,7 +17,7 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode") // "SYSTEM", "LIGHT", "DARK"
         val KEY_OPENROUTER_API_KEY = stringPreferencesKey("openrouter_api_key")
         val KEY_OPENROUTER_MODEL = stringPreferencesKey("openrouter_model")
-        val KEY_DB_INITIALIZED = booleanPreferencesKey("db_initialized_v2")
+        val KEY_DB_INITIALIZED = booleanPreferencesKey("db_initialized_v3")
     }
 
     val themeModeFlow: Flow<String> = context.dataStore.data.map { prefs ->

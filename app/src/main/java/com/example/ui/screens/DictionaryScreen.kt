@@ -61,6 +61,8 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -88,6 +90,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -379,6 +382,26 @@ fun DictionaryScreen(
                             onClick = { viewModel.selectFilter("ALL") }
                         )
                         CategoryFilterChip(
+                            label = "⭐ Important",
+                            isSelected = selectedFilter == "IMPORTANT",
+                            onClick = { viewModel.selectFilter("IMPORTANT") }
+                        )
+                        CategoryFilterChip(
+                            label = "🟢 Basic",
+                            isSelected = selectedFilter == "LEVEL_BASIC",
+                            onClick = { viewModel.selectFilter("LEVEL_BASIC") }
+                        )
+                        CategoryFilterChip(
+                            label = "🟡 Intermediate",
+                            isSelected = selectedFilter == "LEVEL_INTERMEDIATE",
+                            onClick = { viewModel.selectFilter("LEVEL_INTERMEDIATE") }
+                        )
+                        CategoryFilterChip(
+                            label = "🟣 Advanced",
+                            isSelected = selectedFilter == "LEVEL_ADVANCED",
+                            onClick = { viewModel.selectFilter("LEVEL_ADVANCED") }
+                        )
+                        CategoryFilterChip(
                             label = "Networking",
                             isSelected = selectedFilter == "NETWORKING",
                             onClick = { viewModel.selectFilter("NETWORKING") }
@@ -489,6 +512,7 @@ fun DictionaryScreen(
                         words = words,
                         onWordClick = { viewModel.selectWord(it) },
                         onBookmarkToggle = { viewModel.toggleBookmark(it) },
+                        onImportanceToggle = { viewModel.toggleImportance(it) },
                         onAddWordClick = { viewModel.openAddWordDialog() },
                         onAiAddClick = { viewModel.openAiAddDialog() }
                     )
@@ -498,6 +522,7 @@ fun DictionaryScreen(
                         word = selectedWord!!,
                         onBack = { viewModel.selectWord(null) },
                         onBookmarkToggle = { viewModel.toggleBookmark(it) },
+                        onImportanceToggle = { viewModel.toggleImportance(it) },
                         onDeleteClick = { viewModel.deleteWord(it) },
                         onAskOpenRouter = { viewModel.askOpenRouter(it) },
                         openRouterLoading = openRouterLoading,
@@ -544,8 +569,8 @@ fun DictionaryScreen(
             onAutoFillWithAi = { term, onGenerated, onError ->
                 viewModel.generateWordForForm(term, onGenerated, onError)
             },
-            onSave = { term, category, meaning, points, uses, examples, link ->
-                viewModel.addCustomWord(term, category, meaning, points, uses, examples, link)
+            onSave = { term, category, meaning, points, uses, examples, link, level, isImportant ->
+                viewModel.addCustomWord(term, category, meaning, points, uses, examples, link, level, isImportant)
             }
         )
     }
@@ -586,12 +611,100 @@ private fun CategoryFilterChip(
     }
 }
 
+// Level indicator badge
+@Composable
+fun LevelBadge(
+    level: String,
+    modifier: Modifier = Modifier
+) {
+    val label: String
+    val containerColor: Color
+    val textColor: Color
+    when (level.uppercase()) {
+        WordEntity.LEVEL_ADVANCED -> {
+            label = "Advanced"
+            containerColor = Color(0xFF9333EA).copy(alpha = 0.15f)
+            textColor = Color(0xFF9333EA)
+        }
+        WordEntity.LEVEL_INTERMEDIATE -> {
+            label = "Intermediate"
+            containerColor = Color(0xFFF59E0B).copy(alpha = 0.18f)
+            textColor = Color(0xFFD97706)
+        }
+        else -> {
+            label = "Basic"
+            containerColor = Color(0xFF10B981).copy(alpha = 0.15f)
+            textColor = Color(0xFF059669)
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = containerColor,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .background(textColor, shape = CircleShape)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = textColor
+            )
+        }
+    }
+}
+
+// Important concept badge
+@Composable
+fun ImportantBadge(
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = Color(0xFFEF4444).copy(alpha = 0.15f),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = null,
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(11.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = "Important",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = Color(0xFFEF4444)
+            )
+        }
+    }
+}
+
 // Main Word List in Alphabetical Order
 @Composable
 private fun WordListView(
     words: List<WordEntity>,
     onWordClick: (WordEntity) -> Unit,
     onBookmarkToggle: (WordEntity) -> Unit,
+    onImportanceToggle: (WordEntity) -> Unit,
     onAddWordClick: () -> Unit,
     onAiAddClick: () -> Unit = {}
 ) {
@@ -662,7 +775,8 @@ private fun WordListView(
                 WordListItem(
                     word = word,
                     onClick = { onWordClick(word) },
-                    onBookmarkToggle = { onBookmarkToggle(word) }
+                    onBookmarkToggle = { onBookmarkToggle(word) },
+                    onImportanceToggle = { onImportanceToggle(word) }
                 )
                 HorizontalDivider(
                     thickness = 0.5.dp,
@@ -678,7 +792,8 @@ private fun WordListView(
 private fun WordListItem(
     word: WordEntity,
     onClick: () -> Unit,
-    onBookmarkToggle: () -> Unit
+    onBookmarkToggle: () -> Unit,
+    onImportanceToggle: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -689,13 +804,15 @@ private fun WordListItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
                     text = word.term,
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     shape = RoundedCornerShape(3.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant
@@ -706,6 +823,10 @@ private fun WordListItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                     )
+                }
+                LevelBadge(level = word.level)
+                if (word.isImportant) {
+                    ImportantBadge()
                 }
             }
             Spacer(modifier = Modifier.height(3.dp))
@@ -719,17 +840,34 @@ private fun WordListItem(
             )
         }
 
-        // Bookmark Toggle Icon Button
-        IconButton(
-            onClick = onBookmarkToggle,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                imageVector = if (word.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                contentDescription = if (word.isBookmarked) "Unbookmark" else "Bookmark",
-                tint = if (word.isBookmarked) BookmarkGold else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.size(18.dp)
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Important Star Toggle Button
+            IconButton(
+                onClick = onImportanceToggle,
+                modifier = Modifier
+                    .size(32.dp)
+                    .testTag("importance_toggle_${word.term}")
+            ) {
+                Icon(
+                    imageVector = if (word.isImportant) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (word.isImportant) "Unmark Important" else "Mark Important",
+                    tint = if (word.isImportant) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Bookmark Toggle Icon Button
+            IconButton(
+                onClick = onBookmarkToggle,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = if (word.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    contentDescription = if (word.isBookmarked) "Unbookmark" else "Bookmark",
+                    tint = if (word.isBookmarked) BookmarkGold else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
@@ -740,6 +878,7 @@ private fun WordMeaningView(
     word: WordEntity,
     onBack: () -> Unit,
     onBookmarkToggle: (WordEntity) -> Unit,
+    onImportanceToggle: (WordEntity) -> Unit,
     onDeleteClick: (WordEntity) -> Unit,
     onAskOpenRouter: (WordEntity) -> Unit,
     openRouterLoading: Boolean,
@@ -847,6 +986,21 @@ private fun WordMeaningView(
                     }
                 }
 
+                // Star / Important Toggle Icon Button
+                IconButton(
+                    onClick = { onImportanceToggle(word) },
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("detail_importance_toggle")
+                ) {
+                    Icon(
+                        imageVector = if (word.isImportant) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = if (word.isImportant) "Unmark Important" else "Mark Important",
+                        tint = if (word.isImportant) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
                 // Bookmark Icon Button
                 IconButton(
                     onClick = { onBookmarkToggle(word) },
@@ -902,8 +1056,11 @@ private fun WordMeaningView(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Category & Part Pills
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Category, Part, Level & Important Pills
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Surface(
                     shape = RoundedCornerShape(4.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant
@@ -925,6 +1082,10 @@ private fun WordMeaningView(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
+                }
+                LevelBadge(level = word.level)
+                if (word.isImportant) {
+                    ImportantBadge()
                 }
             }
 
@@ -1165,7 +1326,7 @@ private fun MeaningSection(
 private fun AddWordDialog(
     onDismiss: () -> Unit,
     onAutoFillWithAi: ((term: String, onGenerated: (WordEntity) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
-    onSave: (term: String, category: String, meaning: String, points: String, uses: String, examples: String, link: String) -> Unit
+    onSave: (term: String, category: String, meaning: String, points: String, uses: String, examples: String, link: String, level: String, isImportant: Boolean) -> Unit
 ) {
     var term by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
@@ -1174,6 +1335,8 @@ private fun AddWordDialog(
     var uses by remember { mutableStateOf("") }
     var examples by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
+    var level by remember { mutableStateOf(WordEntity.LEVEL_BASIC) }
+    var isImportant by remember { mutableStateOf(false) }
 
     var isAutofilling by remember { mutableStateOf(false) }
     var autofillError by remember { mutableStateOf<String?>(null) }
@@ -1234,6 +1397,8 @@ private fun AddWordDialog(
                                             uses = generated.practicalUses
                                             examples = generated.examples
                                             link = generated.referenceUrl
+                                            level = generated.level
+                                            isImportant = generated.isImportant
                                         },
                                         { error ->
                                             isAutofilling = false
@@ -1282,6 +1447,72 @@ private fun AddWordDialog(
                             text = autofillError!!,
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                // Level Selector
+                Text(
+                    text = "Difficulty Level:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val levels = listOf(
+                        WordEntity.LEVEL_BASIC to "🟢 Basic",
+                        WordEntity.LEVEL_INTERMEDIATE to "🟡 Intermediate",
+                        WordEntity.LEVEL_ADVANCED to "🟣 Advanced"
+                    )
+                    for ((lvlCode, lvlLabel) in levels) {
+                        val isSelected = level == lvlCode
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { level = lvlCode }
+                        ) {
+                            Text(
+                                text = lvlLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Important Star Checkbox
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (isImportant) Color(0xFFEF4444).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isImportant = !isImportant }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isImportant) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = null,
+                            tint = if (isImportant) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isImportant) "Marked as Important / Core Concept ⭐" else "Mark as Important Concept",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = if (isImportant) FontWeight.Bold else FontWeight.Normal
+                            ),
+                            color = if (isImportant) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -1339,7 +1570,7 @@ private fun AddWordDialog(
             Button(
                 onClick = {
                     if (term.isNotBlank() && meaning.isNotBlank()) {
-                        onSave(term, category, meaning, points, uses, examples, link)
+                        onSave(term, category, meaning, points, uses, examples, link, level, isImportant)
                     }
                 },
                 enabled = term.isNotBlank() && meaning.isNotBlank(),

@@ -28,4 +28,51 @@ class ExampleUnitTest {
             assertTrue("Term $term should have key points", found.keyPoints.isNotBlank())
         }
     }
+
+    @Test
+    fun catalog_wordsHaveValidLevels_andImportantMarkings() {
+        val words = DefaultWordsCatalog.getAllCatalogWords()
+
+        val basicWords = words.filter { it.level == "BASIC" }
+        val intermediateWords = words.filter { it.level == "INTERMEDIATE" }
+        val advancedWords = words.filter { it.level == "ADVANCED" }
+        val importantWords = words.filter { it.isImportant }
+
+        assertTrue("Should contain Basic level words", basicWords.isNotEmpty())
+        assertTrue("Should contain Intermediate level words", intermediateWords.isNotEmpty())
+        assertTrue("Should contain Advanced level words", advancedWords.isNotEmpty())
+        assertTrue("Should contain Important marked words", importantWords.isNotEmpty())
+
+        // Basic important terms
+        val ip = words.find { it.term.equals("IP", ignoreCase = true) }
+        assertNotNull(ip)
+        assertTrue("IP should be marked important", ip!!.isImportant)
+
+        // Intermediate important terms
+        val rag = words.find { it.term.equals("RAG", ignoreCase = true) }
+        assertNotNull(rag)
+        assertTrue("RAG should be marked important", rag!!.isImportant)
+        assertTrue("RAG should be Intermediate", rag.level == "INTERMEDIATE")
+
+        // Advanced important terms
+        val bgp = words.find { it.term.equals("BGP", ignoreCase = true) }
+        assertNotNull("BGP should be present in catalog", bgp)
+        assertTrue("BGP should be Advanced", bgp!!.level == "ADVANCED")
+        assertTrue("BGP should be marked important", bgp.isImportant)
+    }
+
+    @Test
+    fun classifyWord_assignsExpectedLevelsAndImportance() {
+        val (basicLvl, basicImp) = DefaultWordsCatalog.classifyWord("DNS", "Networking", "Part 1")
+        assertEquals("BASIC", basicLvl)
+        assertTrue(basicImp)
+
+        val (interLvl, interImp) = DefaultWordsCatalog.classifyWord("Transformer", "AI Core", "Part 1")
+        assertEquals("INTERMEDIATE", interLvl)
+        assertTrue(interImp)
+
+        val (advLvl, advImp) = DefaultWordsCatalog.classifyWord("Speculative Decoding", "Inference", "Part 1 Advanced")
+        assertEquals("ADVANCED", advLvl)
+        assertTrue(advImp)
+    }
 }

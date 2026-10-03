@@ -96,6 +96,10 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
         // 1. Filter by section/filter
         when (filter) {
+            "IMPORTANT" -> list = list.filter { it.isImportant }
+            "LEVEL_BASIC" -> list = list.filter { it.level == WordEntity.LEVEL_BASIC }
+            "LEVEL_INTERMEDIATE" -> list = list.filter { it.level == WordEntity.LEVEL_INTERMEDIATE }
+            "LEVEL_ADVANCED" -> list = list.filter { it.level == WordEntity.LEVEL_ADVANCED }
             "NETWORKING" -> list = list.filter { it.part.contains("Networking", ignoreCase = true) || it.category.equals("Networking", ignoreCase = true) }
             "HARNESSES" -> list = list.filter { it.part.contains("Harness", ignoreCase = true) || it.category.contains("Harness", ignoreCase = true) || it.category.contains("Framework", ignoreCase = true) || it.category.contains("MCP", ignoreCase = true) || it.category.contains("Vector", ignoreCase = true) }
             "MASTER_LIST" -> list = list.filter { it.part.contains("Master", ignoreCase = true) }
@@ -122,7 +126,7 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
         // Strict alphabetical order
         list.sortedBy { it.term.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         initializeDatabaseIfNeeded()
@@ -188,6 +192,16 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun toggleImportance(word: WordEntity) {
+        viewModelScope.launch {
+            val newStatus = !word.isImportant
+            wordDao.updateImportance(word.id, newStatus)
+            if (_selectedWord.value?.id == word.id) {
+                _selectedWord.value = word.copy(isImportant = newStatus)
+            }
+        }
+    }
+
     fun addCustomWord(
         term: String,
         category: String,
@@ -195,7 +209,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         keyPoints: String,
         practicalUses: String,
         examples: String,
-        referenceUrl: String
+        referenceUrl: String,
+        level: String = WordEntity.LEVEL_BASIC,
+        isImportant: Boolean = false
     ) {
         viewModelScope.launch {
             val newWord = WordEntity(
@@ -207,11 +223,14 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
                 practicalUses = practicalUses.trim(),
                 examples = examples.trim(),
                 referenceUrl = referenceUrl.trim(),
+                level = level,
+                isImportant = isImportant,
                 isCustom = true,
                 isBookmarked = false
             )
             val id = wordDao.insertWord(newWord)
-            _selectedWord.value = newWord.copy(id = id)
+            val insertedWord = newWord.copy(id = id)
+            _selectedWord.value = insertedWord
             _showAddWordDialog.value = false
         }
     }

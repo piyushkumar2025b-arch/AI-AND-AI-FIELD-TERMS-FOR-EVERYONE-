@@ -54,4 +54,10 @@ interface WordDao {
 
     @Query("UPDATE words SET isBookmarked = :isBookmarked WHERE id = :id")
     suspend fun updateBookmark(id: Long, isBookmarked: Boolean)
+
+    @Query("UPDATE words SET isImportant = :isImportant WHERE id = :id")
+    suspend fun updateImportance(id: Long, isImportant: Boolean)
+
+    @Query("UPDATE words SET level = :level WHERE id = :id")
+    suspend fun updateLevel(id: Long, level: String)
 }
