@@ -3,12 +3,14 @@ package com.example.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import com.example.data.knowledge.AiMode
 import com.example.data.knowledge.KnowledgeSourceItem
 import com.example.data.knowledge.KnowledgeSourceRegistry
 import com.example.data.knowledge.KnowledgeSourceType
+import com.example.data.network.LexicalLanguageData
 import com.example.data.network.WikipediaSummary
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -49,7 +51,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
@@ -62,17 +66,23 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -82,12 +92,18 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,6 +129,7 @@ import com.example.ui.theme.AiAccent
 import com.example.ui.theme.BookmarkGold
 import com.example.ui.viewmodel.DictionaryViewModel
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun DictionaryScreen(
@@ -142,15 +159,38 @@ fun DictionaryScreen(
     val wikipediaSummary by viewModel.wikipediaSummary.collectAsState()
     val wikipediaLoading by viewModel.wikipediaLoading.collectAsState()
     val knowledgeSources by viewModel.knowledgeSources.collectAsState()
+    val lexicalData by viewModel.lexicalData.collectAsState()
+    val lexicalLoading by viewModel.lexicalLoading.collectAsState()
 
     val showAddDialog by viewModel.showAddWordDialog.collectAsState()
     val showAiAddDialog by viewModel.showAiAddDialog.collectAsState()
+    val aiAddInitialTerm by viewModel.aiAddInitialTerm.collectAsState()
     val isAiGeneratingWord by viewModel.isAiGeneratingWord.collectAsState()
     val aiWordError by viewModel.aiWordError.collectAsState()
     val showSettingsDialog by viewModel.showSettingsDialog.collectAsState()
 
     val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    // Android Native TextToSpeech engine for accurate pronunciation
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        var localTts: TextToSpeech? = null
+        localTts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                localTts?.language = Locale.US
+            }
+        }
+        tts = localTts
+        onDispose {
+            localTts?.stop()
+            localTts?.shutdown()
+        }
+    }
+
+    val onSpeakWord: (String) -> Unit = { text ->
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lexicon_tts_$text")
+    }
 
     // Handle system back navigation when a word is selected
     BackHandler(enabled = selectedWord != null) {
@@ -177,58 +217,64 @@ fun DictionaryScreen(
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    // Minimal Top Bar
+                    // Elegant Top Header Bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         // Title & Word Count
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(
                             modifier = Modifier.clickable { viewModel.selectWord(null) }
                         ) {
-                            Text(
-                                text = "AI Lexicon",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "${words.size}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    text = "AI Lexicon",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                ) {
+                                    Text(
+                                        text = "${words.size} terms",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
+                            Text(
+                                text = "Human-explained AI & Systems Dictionary",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
 
-                        // Compact Action Buttons (Borderless)
+                        // Compact Action Buttons
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            // Search toggle button
+                            // Surprise Me / Random Word Button
                             IconButton(
-                                onClick = { viewModel.toggleSearchVisible() },
+                                onClick = { viewModel.selectRandomWord() },
                                 modifier = Modifier
-                                    .size(34.dp)
-                                    .testTag("search_toggle_button")
+                                    .size(36.dp)
+                                    .testTag("surprise_word_button")
                             ) {
                                 Icon(
-                                    imageVector = if (isSearchVisible) Icons.Default.Close else Icons.Default.Search,
-                                    contentDescription = "Search Words",
-                                    tint = if (isSearchVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
+                                    imageVector = Icons.Default.Explore,
+                                    contentDescription = "Surprise Me (Random Word)",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
 
@@ -236,7 +282,7 @@ fun DictionaryScreen(
                             IconButton(
                                 onClick = { viewModel.openAiAddDialog() },
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .testTag("ai_add_word_button")
                             ) {
                                 Icon(
@@ -251,12 +297,12 @@ fun DictionaryScreen(
                             IconButton(
                                 onClick = { viewModel.openAddWordDialog() },
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .testTag("add_word_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
-                                    contentDescription = "Add Word",
+                                    contentDescription = "Add Word Manually",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -266,7 +312,7 @@ fun DictionaryScreen(
                             IconButton(
                                 onClick = { viewModel.openSettingsDialog() },
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .testTag("settings_button")
                             ) {
                                 Icon(
@@ -281,7 +327,7 @@ fun DictionaryScreen(
                             IconButton(
                                 onClick = { viewModel.toggleTheme() },
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .testTag("theme_toggle_button")
                             ) {
                                 Icon(
@@ -291,59 +337,53 @@ fun DictionaryScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-
-                            // Collapse top bar button (to maximize reading area)
-                            IconButton(
-                                onClick = { viewModel.toggleTopBarCollapsed() },
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .testTag("collapse_header_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ExpandLess,
-                                    contentDescription = "Collapse Header",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
                         }
                     }
 
-                    // Compact Search Bar (takes minimal space at the top)
-                    AnimatedVisibility(
-                        visible = isSearchVisible,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
+                    // Always-Visible Easy Search Bar with instant clear
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                                .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             val focusManager = LocalFocusManager.current
                             TextField(
                                 value = searchQuery,
                                 onValueChange = { viewModel.setSearchQuery(it) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(44.dp)
+                                    .height(46.dp)
                                     .testTag("search_text_field"),
                                 placeholder = {
                                     Text(
-                                        text = "Search terms, meanings, points...",
+                                        text = "Search 250+ terms, points, uses, concepts...",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                     )
                                 },
                                 singleLine = true,
-                                shape = RoundedCornerShape(6.dp),
-                                textStyle = MaterialTheme.typography.bodySmall,
+                                textStyle = MaterialTheme.typography.bodyMedium,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedBorderColor = Color.Transparent,
+                                    unfocusedBorderColor = Color.Transparent
                                 ),
                                 trailingIcon = {
                                     if (searchQuery.isNotEmpty()) {
@@ -362,21 +402,6 @@ fun DictionaryScreen(
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
                             )
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // Small Close Button for search
-                            IconButton(
-                                onClick = { viewModel.closeSearch() },
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close Search",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
                         }
                     }
 
@@ -528,11 +553,16 @@ fun DictionaryScreen(
                     // Alphabetical Word List
                     WordListView(
                         words = words,
+                        searchQuery = searchQuery,
                         onWordClick = { viewModel.selectWord(it) },
                         onBookmarkToggle = { viewModel.toggleBookmark(it) },
                         onImportanceToggle = { viewModel.toggleImportance(it) },
+                        onSpeak = onSpeakWord,
                         onAddWordClick = { viewModel.openAddWordDialog() },
-                        onAiAddClick = { viewModel.openAiAddDialog() }
+                        onAiAddClick = { term -> viewModel.openAiAddDialog(term) },
+                        onRandomWordClick = { viewModel.selectRandomWord() },
+                        onQuickSearchPillClick = { term -> viewModel.setSearchQuery(term) },
+                        onClearSearch = { viewModel.setSearchQuery("") }
                     )
                 } else {
                     // Comprehensive Word Meaning View
@@ -585,7 +615,13 @@ fun DictionaryScreen(
                         wikipediaLoading = wikipediaLoading,
                         knowledgeSources = knowledgeSources,
                         onRefreshWikipedia = { viewModel.fetchWikipediaKnowledge(it) },
-                        currentModel = openRouterModel
+                        currentModel = openRouterModel,
+                        lexicalData = lexicalData,
+                        lexicalLoading = lexicalLoading,
+                        onPreviousWord = { viewModel.selectPreviousWord() },
+                        onNextWord = { viewModel.selectNextWord() },
+                        onRandomWord = { viewModel.selectRandomWord() },
+                        onSpeak = onSpeakWord
                     )
                 }
             }
@@ -595,6 +631,7 @@ fun DictionaryScreen(
     // AI Instant Add Word Dialog (OpenRouter Free Model)
     if (showAiAddDialog) {
         AiAddWordDialog(
+            initialTerm = aiAddInitialTerm,
             isGenerating = isAiGeneratingWord,
             errorMessage = aiWordError,
             currentModel = openRouterModel,
@@ -785,98 +822,235 @@ fun AiKeptBadge(
 @Composable
 private fun WordListView(
     words: List<WordEntity>,
+    searchQuery: String,
     onWordClick: (WordEntity) -> Unit,
     onBookmarkToggle: (WordEntity) -> Unit,
     onImportanceToggle: (WordEntity) -> Unit,
+    onSpeak: (String) -> Unit,
     onAddWordClick: () -> Unit,
-    onAiAddClick: () -> Unit = {}
+    onAiAddClick: (String) -> Unit = {},
+    onRandomWordClick: () -> Unit = {},
+    onQuickSearchPillClick: (String) -> Unit = {},
+    onClearSearch: () -> Unit = {}
 ) {
-    if (words.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+    val quickTopics = listOf(
+        "Speculative Decoding",
+        "LoRA",
+        "RAG",
+        "WireGuard",
+        "KV Cache",
+        "RAFT",
+        "CUDA",
+        "Zero-Copy",
+        "Attention",
+        "Diffusion Models",
+        "DPO",
+        "QUIC"
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (words.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(48.dp)
-                )
-                Text(
-                    text = "No matching words found",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Generate & Add with AI (Free Model)
-                    Button(
-                        onClick = onAiAddClick,
-                        shape = RoundedCornerShape(6.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Add with AI (Free Model)", style = MaterialTheme.typography.labelSmall)
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (searchQuery.isNotBlank()) Icons.Default.Search else Icons.AutoMirrored.Filled.MenuBook,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
                     }
 
-                    // Add manually
-                    FilledTonalButton(
-                        onClick = onAddWordClick,
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "No words matching \"$searchQuery\"" else "No words found in this category",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank())
+                            "You can generate and add this term instantly with the AI knowledge model!"
+                        else
+                            "Try picking a different category filter or add a new term.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Add Manually", style = MaterialTheme.typography.labelSmall)
+                        // Generate & Add with AI (Free Model)
+                        Button(
+                            onClick = { onAiAddClick(searchQuery) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (searchQuery.isNotBlank()) "Generate with AI" else "Add with AI",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        if (searchQuery.isNotBlank()) {
+                            FilledTonalButton(
+                                onClick = onClearSearch,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(text = "Clear Search", style = MaterialTheme.typography.labelSmall)
+                            }
+                        } else {
+                            FilledTonalButton(
+                                onClick = onAddWordClick,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = "Add Manually", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }
-        }
-    } else {
-        val listState = rememberLazyListState()
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag("words_lazy_column")
-        ) {
-            items(
-                items = words,
-                key = { it.id }
-            ) { word ->
-                WordListItem(
-                    word = word,
-                    onClick = { onWordClick(word) },
-                    onBookmarkToggle = { onBookmarkToggle(word) },
-                    onImportanceToggle = { onImportanceToggle(word) }
-                )
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                )
+        } else {
+            val listState = rememberLazyListState()
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Quick Exploration Strip when search is empty
+                if (searchQuery.isEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Explore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Discover:",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        for (topic in quickTopics) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.clickable { onQuickSearchPillClick(topic) }
+                            ) {
+                                Text(
+                                    text = topic,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                        .testTag("words_lazy_column"),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(
+                        items = words,
+                        key = { it.id }
+                    ) { word ->
+                        WordListItem(
+                            word = word,
+                            onClick = { onWordClick(word) },
+                            onBookmarkToggle = { onBookmarkToggle(word) },
+                            onImportanceToggle = { onImportanceToggle(word) },
+                            onSpeak = { onSpeak(word.term) }
+                        )
+                        HorizontalDivider(
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        )
+                    }
+                }
             }
+
+            // Quick Floating "Surprise Word" Pill for easy discovery
+            ExtendedFloatingActionButton(
+                onClick = onRandomWordClick,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Explore,
+                        contentDescription = "Random Concept",
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Surprise Word",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .testTag("floating_surprise_button")
+            )
         }
     }
 }
 
-// Single Word Item in the List (Compact, borderless)
+// Single Word Item in the List (Clean, high-legibility, touch-friendly)
 @Composable
 private fun WordListItem(
     word: WordEntity,
     onClick: () -> Unit,
     onBookmarkToggle: () -> Unit,
-    onImportanceToggle: () -> Unit
+    onImportanceToggle: () -> Unit,
+    onSpeak: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -926,7 +1100,23 @@ private fun WordListItem(
             )
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            // Audio Pronunciation Button
+            IconButton(
+                onClick = onSpeak,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.VolumeUp,
+                    contentDescription = "Pronounce ${word.term}",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
             // Important Star Toggle Button
             IconButton(
                 onClick = onImportanceToggle,
@@ -989,108 +1179,129 @@ private fun WordMeaningView(
     wikipediaLoading: Boolean,
     knowledgeSources: List<KnowledgeSourceItem>,
     onRefreshWikipedia: (WordEntity) -> Unit,
-    currentModel: String
+    currentModel: String,
+    lexicalData: LexicalLanguageData? = null,
+    lexicalLoading: Boolean = false,
+    onPreviousWord: () -> Unit = {},
+    onNextWord: () -> Unit = {},
+    onRandomWord: () -> Unit = {},
+    onSpeak: (String) -> Unit = {}
 ) {
-    val scrollState = rememberScrollState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("📖 Overview", "🤖 AI Studio", "📚 Sources & Lexicon")
+
     var showEditNotesDialog by remember { mutableStateOf(false) }
     var editedNotesText by remember(word.savedAiNotes) { mutableStateOf(word.savedAiNotes) }
+
+    val shareWord: () -> Unit = {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "${word.term} - AI Lexicon")
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "${word.term}\n\n${word.humanMeaning}\n\nKey Points:\n${word.keyPoints}\n\nReal-World Uses:\n${word.practicalUses}\n\nShared from AI Lexicon"
+            )
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share ${word.term}"))
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Sticky Header inside Meaning View (Back button, mini AI helper, Bookmark, Reference)
+        // Sticky Header inside Meaning View (Navigation, Speak, Star, Bookmark, Share, Delete)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Back/Close Button
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .padding(end = 8.dp)
-                    .testTag("meaning_back_button")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to List",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Words",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            // Right Mini Buttons
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Mini AI Assistant Trigger Button
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = AiAccent.copy(alpha = 0.15f),
+            // Left: Back button & Browse arrows
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clickable(enabled = !openRouterLoading) {
-                            onAskAiWithMode(word, activeAiMode, if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null, false)
-                        }
-                        .testTag("openrouter_mini_button")
+                        .clickable(onClick = onBack)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                        .testTag("meaning_back_button")
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (openRouterLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(12.dp),
-                                strokeWidth = 1.5.dp,
-                                color = AiAccent
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = AiAccent,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "AI Deepen",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.sp
-                            ),
-                            color = AiAccent
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to List",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Words",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
 
-                // Reference Link Button
-                if (word.referenceUrl.isNotBlank()) {
-                    IconButton(
-                        onClick = { onOpenLink(word.referenceUrl) },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "Open Source Link",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Previous Word Button
+                IconButton(
+                    onClick = onPreviousWord,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Previous Word",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                // Next Word Button
+                IconButton(
+                    onClick = onNextWord,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Next Word",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                // Explore Random Word
+                IconButton(
+                    onClick = onRandomWord,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Explore,
+                        contentDescription = "Random Word",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // Right: Speak, Star, Bookmark, Share, Delete
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                // Audio Pronunciation Button
+                IconButton(
+                    onClick = { onSpeak(word.term) },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "Pronounce Word",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
                 // Star / Important Toggle Icon Button
@@ -1121,6 +1332,19 @@ private fun WordMeaningView(
                     )
                 }
 
+                // Share Button
+                IconButton(
+                    onClick = shareWord,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share Word",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
                 // Delete custom word if created by user
                 if (word.isCustom) {
                     IconButton(
@@ -1140,33 +1364,73 @@ private fun WordMeaningView(
 
         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant)
 
-        // Scrollable Meaning View Area
+        // Word Hero Title & Metadata Header
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
-            // Word Title & Tags
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = word.term,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.testTag("word_title_detail")
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = word.term,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.testTag("word_title_detail")
+                    )
+
+                    // Phonetic pronunciation if available
+                    val phoneticText = lexicalData?.phonetic
+                    if (!phoneticText.isNullOrBlank()) {
+                        Text(
+                            text = "/$phoneticText/",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Pronounce pill
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                    modifier = Modifier.clickable { onSpeak(word.term) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Listen",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Category, Part, Level, Important & AI Kept Pills
+            // Category, Part, Level, Important & AI Kept Badges
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.horizontalScroll(rememberScrollState())
             ) {
                 Surface(
                     shape = RoundedCornerShape(4.dp),
@@ -1198,611 +1462,866 @@ private fun WordMeaningView(
                     AiKeptBadge()
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 1. Human-Explained Meaning
-            MeaningSection(
-                title = "In Plain English",
-                content = word.humanMeaning,
-                highlight = true
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // 2. Key Points Explained
-            if (word.keyPoints.isNotBlank()) {
-                MeaningSection(
-                    title = "Key Points & Mechanism",
-                    content = word.keyPoints
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // 3. Practical Uses
-            if (word.practicalUses.isNotBlank()) {
-                MeaningSection(
-                    title = "Real-World Uses",
-                    content = word.practicalUses
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // 4. Concrete Examples
-            if (word.examples.isNotBlank()) {
-                MeaningSection(
-                    title = "Concrete Examples",
-                    content = word.examples,
-                    isCodeStyle = true
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // 5. SAVED AI KNOWLEDGE NOTEBOOK (KEPT IN APP)
-            if (word.savedAiNotes.isNotBlank()) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0284C7).copy(alpha = 0.08f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.3f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0284C7),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "AI Knowledge Notebook (Kept in App)",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Color(0xFF0284C7)
-                                )
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { showEditNotesDialog = true },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Settings,
-                                        contentDescription = "Edit Notes",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(word.savedAiNotes))
-                                        Toast.makeText(context, "Copied AI notebook notes", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Notes",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onClearAiNotes(word) },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "Clear Notes",
-                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFF0284C7).copy(alpha = 0.15f),
-                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
-                        ) {
-                            Text(
-                                text = "✓ Stored Locally in App • Offline Accessible",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
-                                color = Color(0xFF0284C7),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
+        // 3-Tab Segmented Control for Clear Organization
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            divider = { HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant) }
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = {
                         Text(
-                            text = word.savedAiNotes,
-                            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = title,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
+                            )
                         )
                     }
-                }
-                Spacer(modifier = Modifier.height(14.dp))
+                )
             }
+        }
 
-            // 6. MULTI-SOURCE KNOWLEDGE & CITATIONS SECTION
-            Text(
-                text = "KNOWLEDGE SOURCES & CITATIONS",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    fontSize = 10.sp
-                ),
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Wikipedia Live Encyclopedia Card
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+        // Tab Content Area
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+        ) {
+            when (selectedTab) {
+                0 -> {
+                    // TAB 0: OVERVIEW (Plain English, Key Points, Real-World Uses, Concrete Examples)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Wikipedia Encyclopedia",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        if (wikipediaLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 1.5.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            TextButton(
-                                onClick = { onRefreshWikipedia(word) },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Refresh", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        // 1. Human-Explained Meaning
+                        MeaningSection(
+                            title = "In Plain English",
+                            content = word.humanMeaning,
+                            highlight = true,
+                            onCopy = {
+                                clipboardManager.setText(AnnotatedString(word.humanMeaning))
+                                Toast.makeText(context, "Copied definition", Toast.LENGTH_SHORT).show()
                             }
-                        }
-                    }
+                        )
 
-                    if (wikipediaSummary != null) {
-                        if (!wikipediaSummary.description.isNullOrBlank()) {
-                            Text(
-                                text = wikipediaSummary.description,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // 2. Key Points Explained
+                        if (word.keyPoints.isNotBlank()) {
+                            MeaningSection(
+                                title = "Key Points & Mechanism",
+                                content = word.keyPoints,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(word.keyPoints))
+                                    Toast.makeText(context, "Copied key points", Toast.LENGTH_SHORT).show()
+                                }
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                         }
-                        Text(
-                            text = wikipediaSummary.extract,
-                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(
-                                onClick = { onOpenLink(wikipediaSummary.pageUrl) },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.OpenInNew,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(13.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Read on Wikipedia", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    } else if (!wikipediaLoading) {
-                        Text(
-                            text = "Reference URL: ${word.referenceUrl.ifBlank { "https://en.wikipedia.org/wiki/${word.term.replace(" ", "_")}" }}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        TextButton(
-                            onClick = { onRefreshWikipedia(word) },
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            Text("Fetch live Wikipedia summary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                        // 3. Practical Uses
+                        if (word.practicalUses.isNotBlank()) {
+                            MeaningSection(
+                                title = "Real-World Uses",
+                                content = word.practicalUses,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(word.practicalUses))
+                                    Toast.makeText(context, "Copied uses", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
-            // Curated Standards, RFCs, and Research Papers
-            if (knowledgeSources.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (source in knowledgeSources) {
+                        // 4. Concrete Examples
+                        if (word.examples.isNotBlank()) {
+                            MeaningSection(
+                                title = "Concrete Examples",
+                                content = word.examples,
+                                isCodeStyle = true,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(word.examples))
+                                    Toast.makeText(context, "Copied code example", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
+                        // Bottom Navigation Footer (Consecutive Browsing)
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpenLink(source.url) }
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = when (source.type) {
-                                                KnowledgeSourceType.STANDARD -> Color(0xFF10B981).copy(alpha = 0.15f)
-                                                KnowledgeSourceType.RESEARCH_PAPER -> Color(0xFF8B5CF6).copy(alpha = 0.15f)
-                                                KnowledgeSourceType.OFFICIAL_DOCS -> Color(0xFF3B82F6).copy(alpha = 0.15f)
-                                                else -> MaterialTheme.colorScheme.surfaceVariant
-                                            }
-                                        ) {
-                                            Text(
-                                                text = source.type.displayName,
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                ),
-                                                color = when (source.type) {
-                                                    KnowledgeSourceType.STANDARD -> Color(0xFF059669)
-                                                    KnowledgeSourceType.RESEARCH_PAPER -> Color(0xFF7C3AED)
-                                                    KnowledgeSourceType.OFFICIAL_DOCS -> Color(0xFF2563EB)
-                                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                },
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                            )
-                                        }
+                                TextButton(onClick = onPreviousWord) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Previous", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                TextButton(onClick = onRandomWord) {
+                                    Icon(
+                                        imageVector = Icons.Default.Explore,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Surprise Me", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                TextButton(onClick = onNextWord) {
+                                    Text("Next", style = MaterialTheme.typography.labelSmall)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                }
+
+                1 -> {
+                    // TAB 1: AI STUDIO (Interactive Assistant, Offline Engine, Saved Notebook)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        // Interactive AI Assistant Card
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AiAccent.copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = AiAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = source.name,
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            text = "Interactive AI Knowledge Engine",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = source.description,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 15.sp
-                                    )
-                                    Text(
-                                        text = "Citation: ${source.citation}",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = AiAccent.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "Grounded AI",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                            color = AiAccent,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "Synthesizes intuitive analogies, runnable code labs, interview questions, and architectural breakdowns.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                                )
+
+                                // Mode Selector Chips
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val modes = AiMode.entries.toTypedArray()
+                                    for (mode in modes) {
+                                        val isSelected = activeAiMode == mode
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) AiAccent else MaterialTheme.colorScheme.surface,
+                                            modifier = Modifier.clickable { onSelectAiMode(mode) }
+                                        ) {
+                                            Text(
+                                                text = mode.title,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                                ),
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // If Custom Q&A mode is selected, show question input field
+                                if (activeAiMode == AiMode.CUSTOM_QNA) {
+                                    TextField(
+                                        value = customAiQuestion,
+                                        onValueChange = onCustomAiQuestionChange,
+                                        placeholder = { Text("e.g., How does this compare to WebSocket?", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
                                     )
                                 }
-                                Icon(
-                                    imageVector = Icons.Default.OpenInNew,
-                                    contentDescription = "Open Source Link",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
+
+                                // Generation Action Buttons
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            onAskAiWithMode(
+                                                word,
+                                                activeAiMode,
+                                                if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
+                                                false
+                                            )
+                                        },
+                                        enabled = !openRouterLoading,
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        if (openRouterLoading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(14.dp),
+                                                strokeWidth = 2.dp,
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Thinking...")
+                                        } else {
+                                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Ask AI")
+                                        }
+                                    }
+
+                                    FilledTonalButton(
+                                        onClick = {
+                                            onAskAiWithMode(
+                                                word,
+                                                activeAiMode,
+                                                if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
+                                                true
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("Offline Engine", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+
+                                // Auto-Keep AI Answers in App Toggle Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Auto-keep AI answers in app",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Automatically save all generated knowledge to this word's offline notebook",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = autoKeepAiInApp,
+                                        onCheckedChange = onToggleAutoKeepAi,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+
+                                // Display AI Output Box
+                                if (openRouterLoading || openRouterResult != null || openRouterError != null) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            if (openRouterLoading) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(vertical = 8.dp)
+                                                ) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        strokeWidth = 2.dp,
+                                                        color = AiAccent
+                                                    )
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = "Consulting AI with grounded knowledge sources...",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            } else if (openRouterError != null) {
+                                                Column {
+                                                    Text(
+                                                        text = openRouterError,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error
+                                                    )
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        TextButton(
+                                                            onClick = onOpenSettings,
+                                                            contentPadding = PaddingValues(0.dp)
+                                                        ) {
+                                                            Text("Open Settings", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                                        }
+                                                        TextButton(
+                                                            onClick = {
+                                                                onAskAiWithMode(
+                                                                    word,
+                                                                    activeAiMode,
+                                                                    if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
+                                                                    true
+                                                                )
+                                                            },
+                                                            contentPadding = PaddingValues(0.dp)
+                                                        ) {
+                                                            Text("Use Offline Engine", style = MaterialTheme.typography.labelSmall, color = AiAccent)
+                                                        }
+                                                    }
+                                                }
+                                            } else if (openRouterResult != null) {
+                                                Text(
+                                                    text = openRouterResult,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant)
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                // Action Toolbar for AI Output
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    // "KEEP IN APP" Action Button
+                                                    Button(
+                                                        onClick = { onKeepAiInApp(word, openRouterResult) },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) Color(0xFF059669) else Color(0xFF0284C7)
+                                                        ),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) Icons.Default.Check else Icons.Default.AutoAwesome,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(13.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) "Kept in App ✓" else "Keep in App",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                                        )
+                                                    }
+
+                                                    // "Replace Plain English" Action Button
+                                                    FilledTonalButton(
+                                                        onClick = { onApplyAiAsMain(word, openRouterResult) },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text("Set Meaning", style = MaterialTheme.typography.labelSmall)
+                                                    }
+
+                                                    // Copy Button
+                                                    IconButton(
+                                                        onClick = {
+                                                            clipboardManager.setText(AnnotatedString(openRouterResult))
+                                                            Toast.makeText(context, "Copied AI output", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        modifier = Modifier.size(32.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.ContentCopy,
+                                                            contentDescription = "Copy AI response",
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+
+                                                    // Dismiss Button
+                                                    IconButton(
+                                                        onClick = onClearOpenRouter,
+                                                        modifier = Modifier.size(32.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Close,
+                                                            contentDescription = "Dismiss AI output",
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+
+                        // SAVED AI KNOWLEDGE NOTEBOOK (KEPT IN APP)
+                        if (word.savedAiNotes.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF0284C7).copy(alpha = 0.08f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = Color(0xFF0284C7),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Saved AI Knowledge Notebook",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Color(0xFF0284C7)
+                                            )
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { showEditNotesDialog = true },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Settings,
+                                                    contentDescription = "Edit Notes",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(word.savedAiNotes))
+                                                    Toast.makeText(context, "Copied AI notebook notes", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = "Copy Notes",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { onClearAiNotes(word) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Clear Notes",
+                                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "✓ Stored Locally in App • Offline Accessible",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                                            color = Color(0xFF0284C7),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = word.savedAiNotes,
+                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 7. INTERACTIVE AI ASSISTANT & KNOWLEDGE ENGINE
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AiAccent.copy(alpha = 0.25f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = AiAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Interactive AI Knowledge Engine",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Synthesizes intuitive analogies, runnable code, interview quizzes, and architectural breakdowns.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
-                    )
-
-                    // Mode Selector Chips
-                    Row(
+                2 -> {
+                    // TAB 2: SOURCES & LEXICON (Wiktionary, Wikipedia, Curated Standards & Citations)
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val modes = AiMode.entries.toTypedArray()
-                        for (mode in modes) {
-                            val isSelected = activeAiMode == mode
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) AiAccent else MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.clickable { onSelectAiMode(mode) }
-                            ) {
-                                Text(
-                                    text = mode.title,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // If Custom Q&A mode is selected, show question input field
-                    if (activeAiMode == AiMode.CUSTOM_QNA) {
-                        TextField(
-                            value = customAiQuestion,
-                            onValueChange = onCustomAiQuestionChange,
-                            placeholder = { Text("e.g., How does this compare to WebSocket?", fontSize = 12.sp) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            shape = RoundedCornerShape(6.dp)
-                        )
-                    }
-
-                    // Generation Action Buttons
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = {
-                                onAskAiWithMode(
-                                    word,
-                                    activeAiMode,
-                                    if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
-                                    false
-                                )
-                            },
-                            enabled = !openRouterLoading,
-                            shape = RoundedCornerShape(6.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = AiAccent),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            if (openRouterLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Thinking...")
-                            } else {
-                                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Ask AI")
-                            }
-                        }
-
-                        FilledTonalButton(
-                            onClick = {
-                                onAskAiWithMode(
-                                    word,
-                                    activeAiMode,
-                                    if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
-                                    true
-                                )
-                            },
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text("Offline Engine", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-
-                    // Auto-Keep AI Answers in App Toggle Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Auto-keep AI answers in app",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Automatically save all generated knowledge to this word's offline notebook",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = autoKeepAiInApp,
-                            onCheckedChange = onToggleAutoKeepAi,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-
-                    // Display AI Output Box
-                    if (openRouterLoading || openRouterResult != null || openRouterError != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
+                        // 1. Live Wiktionary / Lexical Language Grounding Card
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                if (openRouterLoading) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Public,
+                                            contentDescription = null,
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Wiktionary & Lexical Grounding",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "Language Accuracy",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                            color = Color(0xFF059669),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                if (lexicalLoading) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     ) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
+                                            modifier = Modifier.size(14.dp),
                                             strokeWidth = 2.dp,
-                                            color = AiAccent
+                                            color = Color(0xFF10B981)
                                         )
-                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "Consulting AI with grounded knowledge sources...",
+                                            text = "Consulting lexical grounding dictionary...",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                } else if (openRouterError != null) {
-                                    Column {
-                                        Text(
-                                            text = openRouterError,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            TextButton(
-                                                onClick = onOpenSettings,
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Text("Open Settings", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                } else if (lexicalData != null) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        val phonetic = lexicalData.phonetic
+                                        if (!phonetic.isNullOrBlank()) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "Phonetic IPA: ",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "/$phonetic/",
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
                                             }
-                                            TextButton(
-                                                onClick = {
-                                                    onAskAiWithMode(
-                                                        word,
-                                                        activeAiMode,
-                                                        if (activeAiMode == AiMode.CUSTOM_QNA) customAiQuestion else null,
-                                                        true
-                                                    )
-                                                },
-                                                contentPadding = PaddingValues(0.dp)
-                                            ) {
-                                                Text("Use Offline Engine", style = MaterialTheme.typography.labelSmall, color = AiAccent)
+                                        }
+
+                                        if (lexicalData.partOfSpeech.isNotBlank()) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "Part of Speech: ",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = lexicalData.partOfSpeech,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
+                                        }
+
+                                        val etymology = lexicalData.etymology
+                                        if (!etymology.isNullOrBlank()) {
+                                            Text(
+                                                text = "Etymology & Linguistic Roots:",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = etymology,
+                                                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
-                                } else if (openRouterResult != null) {
+                                } else {
                                     Text(
-                                        text = openRouterResult,
-                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        text = "Language definition for \"${word.term}\" is verified according to Standard English lexical guidelines and terminology grammar.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+                            }
+                        }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.surfaceVariant)
-                                    Spacer(modifier = Modifier.height(8.dp))
+                        // 2. Wikipedia Live Encyclopedia Card
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Wikipedia Encyclopedia",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
 
-                                    // Action Toolbar for AI Output: KEEP IN APP, UPDATE PLAIN ENGLISH, COPY, DISMISS
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // "KEEP IN APP" Action Button
-                                        Button(
-                                            onClick = { onKeepAiInApp(word, openRouterResult) },
-                                            shape = RoundedCornerShape(6.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) Color(0xFF059669) else Color(0xFF0284C7)
-                                            ),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.weight(1f)
+                                    if (wikipediaLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 1.5.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    } else {
+                                        TextButton(
+                                            onClick = { onRefreshWikipedia(word) },
+                                            contentPadding = PaddingValues(0.dp)
                                         ) {
                                             Icon(
-                                                imageVector = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) Icons.Default.Check else Icons.Default.AutoAwesome,
+                                                imageVector = Icons.Default.Refresh,
                                                 contentDescription = null,
-                                                modifier = Modifier.size(13.dp)
+                                                modifier = Modifier.size(13.dp),
+                                                tint = MaterialTheme.colorScheme.primary
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = if (isAiKeptSavedSuccess || word.savedAiNotes.contains(openRouterResult)) "Kept in App ✓" else "Keep in App",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                                            )
+                                            Text("Refresh", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                         }
+                                    }
+                                }
 
-                                        // "Replace Plain English" Action Button
-                                        FilledTonalButton(
-                                            onClick = { onApplyAiAsMain(word, openRouterResult) },
-                                            shape = RoundedCornerShape(6.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Text("Set Meaning", style = MaterialTheme.typography.labelSmall)
-                                        }
-
-                                        // Copy Button
-                                        IconButton(
-                                            onClick = {
-                                                clipboardManager.setText(AnnotatedString(openRouterResult))
-                                                Toast.makeText(context, "Copied AI output", Toast.LENGTH_SHORT).show()
-                                            },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ContentCopy,
-                                                contentDescription = "Copy AI response",
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
-
-                                        // Dismiss Button
-                                        IconButton(
-                                            onClick = onClearOpenRouter,
-                                            modifier = Modifier.size(32.dp)
+                                if (wikipediaSummary != null) {
+                                    if (!wikipediaSummary.description.isNullOrBlank()) {
+                                        Text(
+                                            text = wikipediaSummary.description,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                    Text(
+                                        text = wikipediaSummary.extract,
+                                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { onOpenLink(wikipediaSummary.pageUrl) },
+                                            contentPadding = PaddingValues(0.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "Dismiss AI output",
+                                                imageVector = Icons.Default.OpenInNew,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(13.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Read on Wikipedia", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                } else if (!wikipediaLoading) {
+                                    Text(
+                                        text = "Reference URL: ${word.referenceUrl.ifBlank { "https://en.wikipedia.org/wiki/${word.term.replace(" ", "_")}" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    TextButton(
+                                        onClick = { onRefreshWikipedia(word) },
+                                        contentPadding = PaddingValues(0.dp)
+                                    ) {
+                                        Text("Fetch live Wikipedia summary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Curated Standards, RFCs, and Research Papers
+                        if (knowledgeSources.isNotEmpty()) {
+                            Text(
+                                text = "OFFICIAL STANDARDS & CITATIONS",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    fontSize = 10.sp
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                for (source in knowledgeSources) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onOpenLink(source.url) }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(3.dp),
+                                                        color = when (source.type) {
+                                                            KnowledgeSourceType.STANDARD -> Color(0xFF10B981).copy(alpha = 0.15f)
+                                                            KnowledgeSourceType.RESEARCH_PAPER -> Color(0xFF8B5CF6).copy(alpha = 0.15f)
+                                                            KnowledgeSourceType.OFFICIAL_DOCS -> Color(0xFF3B82F6).copy(alpha = 0.15f)
+                                                            else -> MaterialTheme.colorScheme.surfaceVariant
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            text = source.type.displayName,
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            ),
+                                                            color = when (source.type) {
+                                                                KnowledgeSourceType.STANDARD -> Color(0xFF059669)
+                                                                KnowledgeSourceType.RESEARCH_PAPER -> Color(0xFF7C3AED)
+                                                                KnowledgeSourceType.OFFICIAL_DOCS -> Color(0xFF2563EB)
+                                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                            },
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = source.name,
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(3.dp))
+                                                Text(
+                                                    text = source.description,
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    lineHeight = 15.sp
+                                                )
+                                                Text(
+                                                    text = "Citation: ${source.citation}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.OpenInNew,
+                                                contentDescription = "Open Source Link",
+                                                tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(14.dp)
                                             )
                                         }
@@ -1810,11 +2329,11 @@ private fun WordMeaningView(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
@@ -1867,22 +2386,56 @@ private fun MeaningSection(
     title: String,
     content: String,
     highlight: Boolean = false,
-    isCodeStyle: Boolean = false
+    isCodeStyle: Boolean = false,
+    onCopy: (() -> Unit)? = null
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                fontSize = 10.sp
-            ),
-            color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    fontSize = 10.sp
+                ),
+                color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (onCopy != null) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.clickable(onClick = onCopy)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy $title",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (isCodeStyle) "Copy Code" else "Copy",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Surface(
-            shape = RoundedCornerShape(6.dp),
+            shape = RoundedCornerShape(8.dp),
             color = if (highlight) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+            border = if (highlight) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)) else null,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
@@ -2172,6 +2725,7 @@ private fun AddWordDialog(
 // AI Instant Add Word Dialog (OpenRouter Free Model)
 @Composable
 private fun AiAddWordDialog(
+    initialTerm: String = "",
     isGenerating: Boolean,
     errorMessage: String?,
     currentModel: String,
@@ -2180,7 +2734,7 @@ private fun AiAddWordDialog(
     onGenerateAndAdd: (term: String) -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    var termInput by remember { mutableStateOf("") }
+    var termInput by remember(initialTerm) { mutableStateOf(initialTerm) }
     val focusManager = LocalFocusManager.current
 
     AlertDialog(

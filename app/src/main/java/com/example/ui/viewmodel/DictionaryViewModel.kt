@@ -94,6 +94,9 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     private val _showAiAddDialog = MutableStateFlow(false)
     val showAiAddDialog: StateFlow<Boolean> = _showAiAddDialog.asStateFlow()
 
+    private val _aiAddInitialTerm = MutableStateFlow("")
+    val aiAddInitialTerm: StateFlow<String> = _aiAddInitialTerm.asStateFlow()
+
     private val _isAiGeneratingWord = MutableStateFlow(false)
     val isAiGeneratingWord: StateFlow<Boolean> = _isAiGeneratingWord.asStateFlow()
 
@@ -227,13 +230,45 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         _openRouterError.value = null
         _isAiKeptSavedSuccess.value = false
         _wikipediaSummary.value = null
+        _lexicalData.value = null
 
         if (word != null) {
             _knowledgeSources.value = KnowledgeSourceRegistry.getKnowledgeSourcesForWord(word)
             // Pre-fetch Wikipedia summary in background for richer knowledge
             fetchWikipediaKnowledge(word)
+            // Pre-fetch lexical linguistic data for phonetics & grammar
+            fetchLexicalData(word)
         } else {
             _knowledgeSources.value = emptyList()
+        }
+    }
+
+    fun selectRandomWord() {
+        val currentList = filteredWords.value
+        if (currentList.isNotEmpty()) {
+            selectWord(currentList.random())
+        }
+    }
+
+    fun selectNextWord() {
+        val currentList = filteredWords.value
+        val current = _selectedWord.value ?: return
+        val idx = currentList.indexOfFirst { it.id == current.id }
+        if (idx != -1 && idx < currentList.size - 1) {
+            selectWord(currentList[idx + 1])
+        } else if (currentList.isNotEmpty()) {
+            selectWord(currentList.first())
+        }
+    }
+
+    fun selectPreviousWord() {
+        val currentList = filteredWords.value
+        val current = _selectedWord.value ?: return
+        val idx = currentList.indexOfFirst { it.id == current.id }
+        if (idx > 0) {
+            selectWord(currentList[idx - 1])
+        } else if (currentList.isNotEmpty()) {
+            selectWord(currentList.last())
         }
     }
 
@@ -243,6 +278,19 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setCustomAiQuestion(question: String) {
         _customAiQuestion.value = question
+    }
+
+    fun fetchLexicalData(word: WordEntity) {
+        viewModelScope.launch {
+            _lexicalLoading.value = true
+            try {
+                val data = lexicalService.resolveLexicalLanguageData(word.term)
+                _lexicalData.value = data
+            } catch (_: Exception) {
+            } finally {
+                _lexicalLoading.value = false
+            }
+        }
     }
 
     fun fetchWikipediaKnowledge(word: WordEntity) {
@@ -433,13 +481,15 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
         _showAddWordDialog.value = false
     }
 
-    fun openAiAddDialog() {
+    fun openAiAddDialog(term: String = "") {
+        _aiAddInitialTerm.value = term
         _aiWordError.value = null
         _showAiAddDialog.value = true
     }
 
     fun closeAiAddDialog() {
         _showAiAddDialog.value = false
+        _aiAddInitialTerm.value = ""
         _aiWordError.value = null
     }
 
