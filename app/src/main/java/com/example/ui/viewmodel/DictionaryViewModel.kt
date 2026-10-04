@@ -133,6 +133,19 @@ class DictionaryViewModel(application: Application) : AndroidViewModel(applicati
     // Master stream of all words from Room database
     private val rawWordsFlow = wordDao.getAllWordsFlow()
 
+    val allWords: StateFlow<List<WordEntity>> = rawWordsFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    private val _selectedAppTab = MutableStateFlow(0)
+    val selectedAppTab: StateFlow<Int> = _selectedAppTab.asStateFlow()
+
+    fun selectAppTab(tab: Int) {
+        _selectedAppTab.value = tab
+    }
+
     val filteredWords: StateFlow<List<WordEntity>> = combine(
         rawWordsFlow,
         _searchQuery,
